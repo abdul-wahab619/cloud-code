@@ -8,6 +8,7 @@ import { handleGitHubStatus } from './handlers/github_status';
 import { handleGitHubWebhook } from './handlers/github_webhook';
 import { handleInteractiveRequest } from './handlers/interactive';
 import { handleDashboardAPI, serveDashboard } from './handlers/dashboard';
+import { handleHealthCheck, handleMetrics, handlePrometheusMetrics } from './handlers/health';
 import { logWithContext } from './log';
 import type { GitHubAppConfig, Repository, Env } from './types';
 
@@ -584,8 +585,8 @@ export class MyContainer extends Container {
   sleepAfter = '45s'; // Extended timeout for Claude Code processing
   envVars: Record<string, string> = {
     MESSAGE: 'I was passed in via the container class!',
-    // Custom Claude API configuration
-    ANTHROPIC_AUTH_TOKEN: 'cb3aff925b944bb0a644d2bf999e403f.mtilqno57rHf2oEb',
+    // Base URL for Anthropic API proxy (can be overridden via request)
+    // Note: API keys are passed dynamically via request body, not hardcoded here
     ANTHROPIC_BASE_URL: 'https://api.z.ai/api/anthropic',
   };
 
@@ -742,6 +743,25 @@ export default {
         response = await handleGitHubWebhook(request, env);
       }
 
+      // Health and monitoring endpoints
+      else if (pathname === '/health' || pathname === '/healthz') {
+        logWithContext('MAIN_HANDLER', 'Routing to health check');
+        routeMatched = true;
+        response = await handleHealthCheck(request, env);
+      }
+
+      else if (pathname === '/metrics') {
+        logWithContext('MAIN_HANDLER', 'Routing to metrics');
+        routeMatched = true;
+        response = await handleMetrics(request, env);
+      }
+
+      else if (pathname === '/metrics/prometheus') {
+        logWithContext('MAIN_HANDLER', 'Routing to Prometheus metrics');
+        routeMatched = true;
+        response = await handlePrometheusMetrics(request);
+      }
+
       // Container routes
       else if (pathname.startsWith('/container')) {
         logWithContext('MAIN_HANDLER', 'Routing to basic container');
@@ -771,9 +791,12 @@ export default {
         routeMatched = true;
         let id = env.MY_CONTAINER.idFromName('error-test');
         let container = env.MY_CONTAINER.get(id);
-        response = await containerFetch(container, request, {
+
+        // Map /error/* to container's /error endpoint
+        const rewrittenRequest = rewriteRequestPath(request, '/error');
+        response = await containerFetch(container, rewrittenRequest, {
           containerName: 'error-test',
-          route: getRouteFromRequest(request)
+          route: '/error'
         });
       }
 
