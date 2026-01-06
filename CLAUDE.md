@@ -172,10 +172,11 @@ All sensitive data encrypted with AES-256-GCM before storage.
 
 ## Centralized API Key
 
-The Claude API key is centrally managed via the `ANTHROPIC_API_KEY` environment variable:
+The API key is centrally managed via the `ANTHROPIC_API_KEY` environment variable:
 - Set as a Cloudflare Secret in production
 - All users share the same API key
 - Eliminates user setup friction (no /claude-setup flow needed)
+- Works with Anthropic-compatible APIs (GLP, Z.ai, or direct Anthropic)
 
 ## Interactive Mode
 
@@ -245,12 +246,12 @@ The container (`container_src/src/interactive_session.ts`) handles interactive s
 ## Environment Variables
 
 **Worker-level** (set in `wrangler.jsonc` or Cloudflare Secrets):
-- `ANTHROPIC_API_KEY` - Claude API key (centralized, shared across all users)
+- `ANTHROPIC_API_KEY` - API key for Anthropic-compatible service (GLP, Z.ai, or direct Anthropic)
 - `ENCRYPTION_KEY` - AES-256-GCM encryption key for GitHub credentials
 - `RATE_LIMIT_KV` - KV namespace for rate limiting (optional)
 
 **Container-level** (passed dynamically by Worker):
-- `ANTHROPIC_API_KEY` - Claude API key (from Worker env)
+- `ANTHROPIC_API_KEY` - API key (from Worker env)
 - `ANTHROPIC_AUTH_TOKEN` - Alias for ANTHROPIC_API_KEY
 - `ANTHROPIC_BASE_URL` - API base URL (default: https://api.z.ai/api/anthropic)
 - `API_TIMEOUT_MS` - Request timeout in milliseconds
