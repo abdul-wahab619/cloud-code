@@ -65,6 +65,8 @@ interface InteractiveSessionConfig {
   };
   githubToken?: string;
   anthropicApiKey?: string;
+  anthropicBaseUrl?: string;
+  apiTimeoutMs?: string;
   options?: {
     maxTurns?: number;
     permissionMode?: 'bypassPermissions' | 'required';
@@ -236,9 +238,16 @@ export async function handleInteractiveSession(
       process.env.ANTHROPIC_AUTH_TOKEN = process.env.ANTHROPIC_API_KEY;
     }
 
-    // Ensure custom base URL is set (for proxy API)
-    if (!process.env.ANTHROPIC_BASE_URL) {
+    // Set custom base URL if provided (for GLM/proxy APIs)
+    if (config.anthropicBaseUrl) {
+      process.env.ANTHROPIC_BASE_URL = config.anthropicBaseUrl;
+    } else if (!process.env.ANTHROPIC_BASE_URL) {
       process.env.ANTHROPIC_BASE_URL = 'https://api.z.ai/api/anthropic';
+    }
+
+    // Set API timeout if provided
+    if (config.apiTimeoutMs) {
+      process.env.API_TIMEOUT_MS = config.apiTimeoutMs;
     }
 
     // 2. Validate API key
