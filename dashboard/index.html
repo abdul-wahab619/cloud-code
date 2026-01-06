@@ -10,19 +10,26 @@
   <link rel="manifest" href="/dashboard/manifest.json">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2358a6ff'><path d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15c0 1.65-1.35 3-3 3s-3-1.35-3-3c0-1.5.45-2.1 1.17-2.83l-.9-.92C10.05 9.55 9 11.15 9 13c0 2.76 2.24 5 5 5 1.85 0 3.45-1.05 4.07-2.17z'/></svg>">
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    @theme {
-      --color-bg: #0d1117;
-      --color-bg-secondary: #161b22;
-      --color-border: #30363d;
-      --color-text: #c9d1d9;
-      --color-text-secondary: #8b949e;
-      --color-primary: #58a6ff;
-      --color-success: #3fb950;
-      --color-warning: #d29922;
-      --color-error: #f85149;
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bg: '#0d1117',
+            'bg-secondary': '#161b22',
+            border: '#30363d',
+            text: '#c9d1d9',
+            'text-secondary': '#8b949e',
+            primary: '#58a6ff',
+            success: '#3fb950',
+            warning: '#d29922',
+            error: '#f85149',
+          }
+        }
+      }
     }
-
+  </script>
+  <style>
     * {
       box-sizing: border-box;
       margin: 0;
@@ -32,8 +39,8 @@
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: var(--color-bg);
-      color: var(--color-text);
+      background: #0d1117;
+      color: #c9d1d9;
       padding-bottom: env(safe-area-inset-bottom, 20px);
     }
 
@@ -50,22 +57,23 @@
       right: 0;
       background: rgba(22, 27, 34, 0.95);
       backdrop-filter: blur(10px);
-      border-top: 1px solid var(--color-border);
+      border-top: 1px solid #30363d;
       padding-bottom: env(safe-area-inset-bottom, 0px);
       z-index: 50;
     }
 
     .nav-item {
       transition: all 0.2s;
+      color: #8b949e;
     }
 
     .nav-item.active {
-      color: var(--color-primary);
+      color: #58a6ff;
     }
 
     .card {
-      background: var(--color-bg-secondary);
-      border: 1px solid var(--color-border);
+      background: #161b22;
+      border: 1px solid #30363d;
       border-radius: 12px;
       overflow: hidden;
     }
@@ -94,20 +102,20 @@
       border-radius: 50%;
     }
 
-    .status-dot.pending { background: var(--color-warning); }
-    .status-dot.running { background: var(--color-primary); animation: pulse 1s infinite; }
-    .status-dot.completed { background: var(--color-success); }
-    .status-dot.failed { background: var(--color-error); }
+    .status-dot.pending { background: #d29922; }
+    .status-dot.running { background: #58a6ff; animation: pulse 1s infinite; }
+    .status-dot.completed { background: #3fb950; }
+    .status-dot.failed { background: #f85149; }
 
     textarea, input {
-      background: var(--color-bg);
-      border: 1px solid var(--color-border);
-      color: var(--color-text);
+      background: #0d1117;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
     }
 
     textarea:focus, input:focus {
       outline: none;
-      border-color: var(--color-primary);
+      border-color: #58a6ff;
     }
 
     .btn-primary {
@@ -115,7 +123,7 @@
     }
 
     .btn-secondary {
-      background: var(--color-border);
+      background: #30363d;
     }
 
     .chat-bubble {
@@ -123,21 +131,21 @@
     }
 
     .chat-bubble.user {
-      background: var(--color-primary);
+      background: #58a6ff;
       color: white;
       margin-left: auto;
     }
 
     .chat-bubble.assistant {
-      background: var(--color-bg-secondary);
-      border: 1px solid var(--color-border);
+      background: #161b22;
+      border: 1px solid #30363d;
     }
 
     .typing-indicator span {
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: var(--color-text-secondary);
+      background: #8b949e;
       animation: typing 1.4s infinite;
     }
 
@@ -156,7 +164,7 @@
       width: 56px;
       height: 56px;
       border-radius: 16px;
-      background: var(--color-primary);
+      background: #58a6ff;
       color: white;
       display: flex;
       align-items: center;
@@ -175,7 +183,7 @@
     }
 
     .modal-content {
-      background: var(--color-bg-secondary);
+      background: #161b22;
       border-radius: 20px 20px 0 0;
       max-height: 90vh;
       overflow-y: auto;
@@ -198,14 +206,14 @@
     .toggle-switch {
       width: 44px;
       height: 24px;
-      background: var(--color-border);
+      background: #30363d;
       border-radius: 12px;
       position: relative;
       transition: background 0.3s;
     }
 
     .toggle-switch.active {
-      background: var(--color-primary);
+      background: #58a6ff;
     }
 
     .toggle-switch::after {
@@ -279,7 +287,7 @@
         </button>
         <button class="nav-item flex flex-col items-center py-2 px-4" data-view="settings" onclick="app.navigate('settings')">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 2.924 0 1.492 1.08 2.748 2.286 2.872 1.716 1.08 3.228.924 3.228.924 1.492 0 2.748-1.08 2.872-2.286.924-1.716-1.08-3.228-.924-3.228-.924-1.492 0-2.748 1.08-2.872 2.286-.924 1.716 1.08 3.228.924 3.228.924 1.492 0 2.748-1.08 2.872-2.286.924-1.716-1.08-3.228-.924-3.228-.924-1.492 0-2.748 1.08-2.872 2.286-.924 1.716 1.08 3.228.924 3.228.924 1.492 0 2.748-1.08 2.872-2.286.924-1.716-1.08-3.228-.924-3.228-.924-1.492 0-2.748 1.08-2.872 2.286-.924 1.716 1.08 3.228.924 3.228.924 1.492 0 2.748-1.08 2.872-2.286.924-1.716-1.08-3.228-.924-3.228-.924-1.492 0-2.748 1.08-2.872 2.286-.924 1.716 1.08 3.228.924 3.228.924 1.492 0 2.748-1.08 2.872-2.286.924-1.716-1.08-3.228-.924-3.228-.924-1.492 0-2.748 1.08-2.872 2.286-.924 1.716 1.08 3.228.924 3.228.924"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 2.924 0 1.492 1.08 2.748 2.286 2.872 1.716 1.08 3.228.924 3.228.924 1.492 0 2.748-1.08 2.872-2.286.924-1.716-1.08-3.228-.924-3.228-.924-1.492 0-2.748 1.08-2.872 2.286-.924 1.716 1.08 3.228.924 3.228.924 1.492 0 2.748-1.08 2.872-2.286.924-1.716-1.08-3.228-.924-3.228-.924-1.492 0-2.748 1.08-2.872 2.286-.924 1.716 1.08 3.228.924 3.228.924"/>
           </svg>
           <span class="text-xs mt-1">Settings</span>
         </button>
