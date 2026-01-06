@@ -116,7 +116,11 @@ export async function handleStartInteractiveSession(
       sessionId,
       prompt: body.prompt,
       repository: body.repository,
+      // GLM configuration
       anthropicApiKey: claudeKeyData.anthropicApiKey,
+      anthropicAuthToken: claudeKeyData.anthropicApiKey,
+      anthropicBaseUrl: 'https://api.z.ai/api/anthropic',
+      apiTimeoutMs: '3000000',
       githubToken,
       options: body.options
     };

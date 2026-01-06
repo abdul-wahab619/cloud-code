@@ -53,8 +53,14 @@ async function routeToClaudeCodeContainer(issue: any, repository: any, env: any,
 
   // Prepare environment variables for the container
   const issueContext = {
+    // Claude Code GLM configuration
+    ANTHROPIC_AUTH_TOKEN: claudeKeyData.anthropicApiKey,
     ANTHROPIC_API_KEY: claudeKeyData.anthropicApiKey,
+    ANTHROPIC_BASE_URL: 'https://api.z.ai/api/anthropic',
+    API_TIMEOUT_MS: '3000000',
+    // GitHub configuration
     GITHUB_TOKEN: tokenData.token,
+    // Issue context
     ISSUE_ID: issue.id.toString(),
     ISSUE_NUMBER: issue.number.toString(),
     ISSUE_TITLE: issue.title,

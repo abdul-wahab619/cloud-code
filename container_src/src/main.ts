@@ -566,9 +566,18 @@ async function processIssueHandler(req: http.IncomingMessage, res: http.ServerRe
         // Also support ANTHROPIC_AUTH_TOKEN (used by some SDK versions)
         process.env.ANTHROPIC_AUTH_TOKEN = issueContextFromRequest.ANTHROPIC_API_KEY;
       }
-      // Set custom base URL for Anthropic API proxy
-      if (!process.env.ANTHROPIC_BASE_URL) {
+      if (issueContextFromRequest.ANTHROPIC_AUTH_TOKEN) {
+        process.env.ANTHROPIC_AUTH_TOKEN = issueContextFromRequest.ANTHROPIC_AUTH_TOKEN;
+      }
+      // Set custom base URL for Anthropic API proxy (from request or default)
+      if (issueContextFromRequest.ANTHROPIC_BASE_URL) {
+        process.env.ANTHROPIC_BASE_URL = issueContextFromRequest.ANTHROPIC_BASE_URL;
+      } else if (!process.env.ANTHROPIC_BASE_URL) {
         process.env.ANTHROPIC_BASE_URL = 'https://api.z.ai/api/anthropic';
+      }
+      // Set API timeout if provided
+      if (issueContextFromRequest.API_TIMEOUT_MS) {
+        process.env.API_TIMEOUT_MS = issueContextFromRequest.API_TIMEOUT_MS;
       }
       if (issueContextFromRequest.GITHUB_TOKEN) {
         process.env.GITHUB_TOKEN = issueContextFromRequest.GITHUB_TOKEN;
