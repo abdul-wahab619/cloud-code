@@ -31,11 +31,30 @@ function rewriteRequestPath(request: Request, newPathname: string): Request {
 
 export class GitHubAppConfigDO {
   private storage: DurableObjectStorage;
+  private encryptionKey: string | null = null;
 
   constructor(state: DurableObjectState) {
     this.storage = state.storage;
     this.initializeTables();
     logWithContext('DURABLE_OBJECT', 'GitHubAppConfigDO initialized with SQLite');
+  }
+
+  /**
+   * Set the encryption key for this Durable Object instance.
+   * This must be called before any encrypt/decrypt operations.
+   */
+  private ensureEncryptionKey(): void {
+    if (!this.encryptionKey) {
+      throw new Error(
+        'Encryption key not set. The DO must receive the encryption key via internal request. ' +
+        'This is a critical configuration error.'
+      );
+    }
+  }
+
+  private setEncryptionKey(key: string): void {
+    this.encryptionKey = key;
+    logWithContext('DURABLE_OBJECT', 'Encryption key set for DO');
   }
 
   private initializeTables(): void {
@@ -82,6 +101,16 @@ export class GitHubAppConfigDO {
       method: request.method,
       pathname: url.pathname
     });
+
+    // Set encryption key (must be called before any encrypt/decrypt operations)
+    if (url.pathname === '/set-encryption-key' && request.method === 'POST') {
+      const { encryptionKey } = await request.json() as { encryptionKey: string };
+      if (!encryptionKey) {
+        return new Response('encryptionKey is required', { status: 400 });
+      }
+      this.setEncryptionKey(encryptionKey);
+      return new Response('OK');
+    }
 
     if (url.pathname === '/store' && request.method === 'POST') {
       logWithContext('DURABLE_OBJECT', 'Storing app config');
@@ -348,8 +377,9 @@ export class GitHubAppConfigDO {
     try {
       logWithContext('DURABLE_OBJECT', 'Decrypting credentials');
 
-      const privateKey = await decrypt(config.privateKey);
-      const webhookSecret = await decrypt(config.webhookSecret);
+      this.ensureEncryptionKey();
+      const privateKey = await decrypt(config.privateKey, this.encryptionKey!);
+      const webhookSecret = await decrypt(config.webhookSecret, this.encryptionKey!);
 
       logWithContext('DURABLE_OBJECT', 'Credentials decrypted successfully');
       return { privateKey, webhookSecret };
@@ -518,6 +548,20 @@ export class GitHubAppConfigDO {
       createdAt: config?.createdAt || null
     };
   }
+}
+
+/**
+ * Helper function to ensure the GitHubAppConfigDO has the encryption key set.
+ * This must be called before any operations that require encryption/decryption.
+ *
+ * Durable Objects don't persist instance variables across restarts, so we need
+ * to re-set the encryption key after each worker restart.
+ */
+async function ensureDOEncryptionKey(doStub: DurableObjectStub, encryptionKey: string): Promise<void> {
+  await doStub.fetch(new Request('http://internal/set-encryption-key', {
+    method: 'POST',
+    body: JSON.stringify({ encryptionKey })
+  }));
 }
 
 /**
@@ -707,7 +751,9 @@ export class InteractiveSessionDO {
 export class MyContainer extends Container {
   defaultPort = 8080;
   requiredPorts = [8080];
-  sleepAfter = '45s'; // Extended timeout for Claude Code processing
+  // Extended timeout for Claude Code processing - complex AI tasks can take several minutes
+  // Maximum allowed by Cloudflare Containers is 10 minutes
+  sleepAfter = '300s'; // 5 minutes for complex Claude Code analysis
   envVars: Record<string, string> = {
     MESSAGE: 'I was passed in via the container class!',
     // Base URL for Anthropic API proxy (can be overridden via request)
@@ -831,6 +877,20 @@ export default {
       cfRay: request.headers.get('cf-ray'),
       cfCountry: request.headers.get('cf-ipcountry')
     });
+
+    // Ensure encryption key is set in the GitHubAppConfigDO for this request
+    // This is required for decrypting stored credentials
+    if (env.ENCRYPTION_KEY) {
+      try {
+        const configDO = (env.GITHUB_APP_CONFIG as any).idFromName('github-app-config');
+        const configDOStub = (env.GITHUB_APP_CONFIG as any).get(configDO);
+        await ensureDOEncryptionKey(configDOStub, env.ENCRYPTION_KEY);
+      } catch (error) {
+        logWithContext('MAIN_HANDLER', 'Failed to set encryption key in DO', {
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
 
     let response: Response;
     let routeMatched = false;

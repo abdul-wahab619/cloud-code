@@ -52,8 +52,16 @@ export async function handleOAuthCallback(_request: Request, url: URL, env: any)
     logWithContext('OAUTH_CALLBACK', 'Storing app credentials in Durable Object');
 
     try {
-      const encryptedPrivateKey = await encrypt(appData.pem);
-      const encryptedWebhookSecret = await encrypt(appData.webhook_secret);
+      // Check for encryption key
+      if (!env.ENCRYPTION_KEY) {
+        throw new Error(
+          'ENCRYPTION_KEY environment variable is not set. ' +
+          'Run: wrangler secret put ENCRYPTION_KEY'
+        );
+      }
+
+      const encryptedPrivateKey = await encrypt(appData.pem, env.ENCRYPTION_KEY);
+      const encryptedWebhookSecret = await encrypt(appData.webhook_secret, env.ENCRYPTION_KEY);
 
       logWithContext('OAUTH_CALLBACK', 'App credentials encrypted successfully');
 
@@ -82,7 +90,13 @@ export async function handleOAuthCallback(_request: Request, url: URL, env: any)
       const id = (env.GITHUB_APP_CONFIG as any).idFromName('github-app-config');
       const configDO = (env.GITHUB_APP_CONFIG as any).get(id);
 
-      // We need to create a simple API for the Durable Object
+      // Set the encryption key in the DO before storing config
+      await configDO.fetch(new Request('http://internal/set-encryption-key', {
+        method: 'POST',
+        body: JSON.stringify({ encryptionKey: env.ENCRYPTION_KEY })
+      }));
+
+      // Store the config
       const storeResponse = await configDO.fetch(new Request('http://internal/store', {
         method: 'POST',
         body: JSON.stringify(appConfig)

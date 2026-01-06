@@ -13,11 +13,14 @@ let cachedEncryptionKey: CryptoKey | null = null;
 /**
  * Generate or retrieve encryption key from environment secret.
  *
- * IMPORTANT: The ENCRYPTION_KEY secret must be set using:
+ * CRITICAL: The ENCRYPTION_KEY secret MUST be set using:
  *   wrangler secret put ENCRYPTION_KEY
  *
  * The key should be a 32-byte (64 hex chars) or 44-byte base64 string.
  * To generate: openssl rand -base64 32
+ *
+ * This function will THROW if no encryption key is provided, preventing
+ * accidental use of ephemeral keys that would cause data loss.
  */
 async function getEncryptionKey(secretKey?: string): Promise<CryptoKey> {
   // Return cached key if available
@@ -25,42 +28,36 @@ async function getEncryptionKey(secretKey?: string): Promise<CryptoKey> {
     return cachedEncryptionKey;
   }
 
-  // Use provided secret from environment
-  if (secretKey) {
-    try {
-      // Try to decode as base64 first
-      const keyBytes = Uint8Array.from(atob(secretKey), c => c.charCodeAt(0));
-      cachedEncryptionKey = await crypto.subtle.importKey(
-        'raw',
-        keyBytes,
-        { name: 'AES-GCM' },
-        false,
-        ['encrypt', 'decrypt']
-      );
-      logWithContext('ENCRYPTION', 'Encryption key loaded from secret');
-      return cachedEncryptionKey;
-    } catch (error) {
-      logWithContext('ENCRYPTION', 'Failed to load encryption key from secret', {
-        error: error instanceof Error ? error.message : String(error)
-      });
-      // Fall through to deriving a key
-    }
+  // Require a secret key from environment
+  if (!secretKey) {
+    throw new Error(
+      'ENCRYPTION_KEY environment variable is not set. ' +
+      'This is required for encrypting GitHub credentials. ' +
+      'Run: wrangler secret put ENCRYPTION_KEY'
+    );
   }
 
-  // Fallback: derive a key from Web Crypto (better than static key)
-  // Generate a random key material and cache it
-  const keyBytes = crypto.getRandomValues(new Uint8Array(32));
-
-  cachedEncryptionKey = await crypto.subtle.importKey(
-    'raw',
-    keyBytes,
-    { name: 'AES-GCM' },
-    false,
-    ['encrypt', 'decrypt']
-  );
-
-  logWithContext('ENCRYPTION', 'Generated ephemeral encryption key (WARNING: not persisted across restarts)');
-  return cachedEncryptionKey;
+  // Use provided secret from environment
+  try {
+    // Try to decode as base64 first
+    const keyBytes = Uint8Array.from(atob(secretKey), c => c.charCodeAt(0));
+    cachedEncryptionKey = await crypto.subtle.importKey(
+      'raw',
+      keyBytes,
+      { name: 'AES-GCM' },
+      false,
+      ['encrypt', 'decrypt']
+    );
+    logWithContext('ENCRYPTION', 'Encryption key loaded from secret');
+    return cachedEncryptionKey;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Failed to load encryption key from secret: ${errorMessage}. ` +
+      'Ensure ENCRYPTION_KEY is a valid base64-encoded 32-byte key. ' +
+      'Generate one with: openssl rand -base64 32'
+    );
+  }
 }
 
 export function clearEncryptionKeyCache(): void {
