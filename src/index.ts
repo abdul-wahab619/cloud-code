@@ -198,6 +198,35 @@ export class GitHubAppConfigDO {
       return new Response(JSON.stringify({ token }));
     }
 
+    if (url.pathname === '/generate-installation-token' && request.method === 'POST') {
+      const body = await request.json() as { installationId: string };
+      logWithContext('DURABLE_OBJECT', 'Generating installation token for specific ID', {
+        installationId: body.installationId
+      });
+
+      const config = await this.getAppConfig();
+      if (!config || !config.appId) {
+        return new Response(JSON.stringify({ error: 'App not configured' }), { status: 400 });
+      }
+
+      const credentials = await this.getDecryptedCredentials();
+      if (!credentials?.privateKey) {
+        return new Response(JSON.stringify({ error: 'Credentials not found' }), { status: 400 });
+      }
+
+      const result = await generateInstallationToken(
+        config.appId,
+        credentials.privateKey,
+        body.installationId
+      );
+
+      if (!result) {
+        return new Response(JSON.stringify({ error: 'Failed to generate token' }), { status: 500 });
+      }
+
+      return new Response(JSON.stringify({ token: result.token }));
+    }
+
     if (url.pathname === '/store-claude-key' && request.method === 'POST') {
       logWithContext('DURABLE_OBJECT', 'Storing Claude API key');
 
@@ -919,6 +948,134 @@ export default {
         logWithContext('MAIN_HANDLER', 'Routing to GitHub status');
         routeMatched = true;
         response = await handleGitHubStatus(request, env);
+      }
+
+      // Installation complete redirect handler
+      else if (pathname === '/install-complete') {
+        logWithContext('MAIN_HANDLER', 'Installation complete redirect', {
+          installationId: url.searchParams.get('installation_id'),
+          setupAction: url.searchParams.get('setup_action')
+        });
+        routeMatched = true;
+
+        const installationId = url.searchParams.get('installation_id');
+        const setupAction = url.searchParams.get('setup_action');
+
+        if (installationId && setupAction === 'install') {
+          // Fire and forget: fetch repository list and update DO
+          (async () => {
+            try {
+              const configId = (env.GITHUB_APP_CONFIG as any).idFromName('github-app-config');
+              const configDO = (env.GITHUB_APP_CONFIG as any).get(configId);
+
+              // Generate installation token for the specific installation ID
+              const tokenResponse = await configDO.fetch(new Request('http://internal/generate-installation-token', {
+                method: 'POST',
+                body: JSON.stringify({ installationId })
+              }));
+              const tokenData = tokenResponse.ok ? await tokenResponse.json() : null;
+
+              if (tokenData?.token) {
+                const installResponse = await fetch(`https://api.github.com/user/installations/${installationId}/repositories`, {
+                  headers: {
+                    'Authorization': `Bearer ${tokenData.token}`,
+                    'Accept': 'application/vnd.github.v3+json',
+                    'User-Agent': 'Claude-Code-Worker'
+                  }
+                });
+
+                if (installResponse.ok) {
+                  const installData = await installResponse.json() as {
+                    repositories?: any[];
+                    installation?: { account?: { login?: string; id?: number; type?: string } }
+                  };
+                  const repos = installData.repositories || [];
+                  const account = installData.installation?.account;
+
+                  await configDO.fetch(new Request('http://internal/update-installation', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                      installationId,
+                      repositories: repos.map((r: any) => ({
+                        id: r.id,
+                        name: r.name,
+                        full_name: r.full_name,
+                        private: r.private
+                      })),
+                      owner: account ? {
+                        login: account.login,
+                        id: account.id,
+                        type: account.type || 'User'
+                      } : { login: 'unknown', id: 0, type: 'User' }
+                    })
+                  }));
+
+                  logWithContext('INSTALL_COMPLETE', 'Updated installation with repositories', {
+                    repositoryCount: repos.length,
+                    owner: account?.login
+                  });
+                }
+              }
+            } catch (error) {
+              logWithContext('INSTALL_COMPLETE', 'Failed to update installation state', {
+                error: error instanceof Error ? error.message : String(error)
+              });
+            }
+          })();
+
+          response = new Response(`
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GitHub App Installed Successfully!</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .success { color: #28a745; }
+        .info-box {
+            background: #e3f2fd;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .btn {
+            display: inline-block;
+            background: #0969da;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1 class="success">GitHub App Installed Successfully!</h1>
+    <p><strong>Installation ID:</strong> ${installationId}</p>
+
+    <div class="info-box">
+        <h3>What's Next?</h3>
+        <p>Your GitHub App is now installed and ready to process issues!</p>
+        <p>Create a new issue in any connected repository to test the integration.</p>
+    </div>
+
+    <p>
+        <a href="/gh-status" class="btn">Check System Status</a>
+    </p>
+</body>
+</html>`, {
+            headers: { 'Content-Type': 'text/html' }
+          });
+        } else {
+          response = new Response('Invalid installation request', { status: 400 });
+        }
       }
 
       // GitHub webhook endpoint

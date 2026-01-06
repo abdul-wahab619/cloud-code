@@ -78,8 +78,8 @@ export async function handleOAuthCallback(_request: Request, url: URL, env: any)
         webhookCount: 0
       };
 
-      // Store in Durable Object (using app ID as unique identifier)
-      const id = (env.GITHUB_APP_CONFIG as any).idFromName(appData.id.toString());
+      // Store in Durable Object at well-known 'github-app-config' ID for status check compatibility
+      const id = (env.GITHUB_APP_CONFIG as any).idFromName('github-app-config');
       const configDO = (env.GITHUB_APP_CONFIG as any).get(id);
 
       // We need to create a simple API for the Durable Object

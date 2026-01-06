@@ -12,7 +12,11 @@
 	},
 	"assets": {
 		"directory": "dashboard",
-		"binding": "DASHBOARD_ASSETS"
+		"binding": "DASHBOARD_ASSETS",
+		"routing": {
+			"include": ["/*"],
+			"exclude": ["/"]
+		}
 	},
 	"containers": [
 		{

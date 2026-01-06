@@ -119,69 +119,31 @@ export async function handleGitHubWebhook(request: Request, env: any): Promise<R
       });
     }
 
-    // Determine which app config to use based on the webhook
-    let appId: string | undefined;
-
-    if (webhookData.installation?.app_id) {
-      // Installation events include app_id directly
-      appId = webhookData.installation.app_id.toString();
-      logWithContext('WEBHOOK', 'App ID found in installation data', { appId });
-    } else if (webhookData.installation?.id) {
-      // For other events, we need to look up the app ID by installation ID
-      // Since we only have one app per worker deployment, we can check our known app
-      // For now, use the app ID from the header
-      const hookInstallationTargetId = request.headers.get('x-github-hook-installation-target-id');
-      if (hookInstallationTargetId) {
-        appId = hookInstallationTargetId;
-        logWithContext('WEBHOOK', 'App ID found in header', { appId });
-      } else {
-        logWithContext('WEBHOOK', 'Cannot determine app ID from webhook payload or headers', {
-          hasInstallationId: !!webhookData.installation?.id,
-          installationId: webhookData.installation?.id
-        });
-        return new Response('Cannot determine app ID', { status: 400 });
-      }
-    } else {
-      // Try to get app ID from headers as fallback
-      const hookInstallationTargetId = request.headers.get('x-github-hook-installation-target-id');
-      if (hookInstallationTargetId) {
-        appId = hookInstallationTargetId;
-        logWithContext('WEBHOOK', 'App ID found in header (fallback)', { appId });
-      } else {
-        logWithContext('WEBHOOK', 'No installation information in webhook payload', {
-          webhookKeys: Object.keys(webhookData),
-          event,
-          availableHeaders: {
-            hookInstallationTargetId: request.headers.get('x-github-hook-installation-target-id'),
-            hookInstallationTargetType: request.headers.get('x-github-hook-installation-target-type')
-          }
-        });
-        return new Response(`No installation information for event: ${event}`, { status: 400 });
-      }
-    }
+    // Since we store config at a well-known 'github-app-config' ID, use that directly
+    // This allows us to handle webhooks from any app installation for this worker
+    const configStorageId = 'github-app-config';
+    logWithContext('WEBHOOK', 'Using well-known config storage ID', { configStorageId });
 
     // Get app configuration and decrypt webhook secret
-    logWithContext('WEBHOOK', 'Retrieving app configuration', { appId });
-
-    const id = (env.GITHUB_APP_CONFIG as any).idFromName(appId);
+    const id = (env.GITHUB_APP_CONFIG as any).idFromName(configStorageId);
     const configDO = (env.GITHUB_APP_CONFIG as any).get(id);
 
     const configResponse = await configDO.fetch(new Request('http://internal/get-credentials'));
 
     logWithContext('WEBHOOK', 'Config DO response', {
       status: configResponse.status,
-      appId
+      configStorageId
     });
 
     if (!configResponse.ok) {
-      logWithContext('WEBHOOK', 'No app configuration found', { appId });
+      logWithContext('WEBHOOK', 'No app configuration found', { configStorageId });
       return new Response('App not configured', { status: 404 });
     }
 
     const credentials = await configResponse.json();
     if (!credentials || !credentials.webhookSecret) {
       logWithContext('WEBHOOK', 'No webhook secret found', {
-        appId,
+        configStorageId,
         hasCredentials: !!credentials,
         credentialKeys: credentials ? Object.keys(credentials) : []
       });

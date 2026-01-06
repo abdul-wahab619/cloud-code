@@ -8,7 +8,7 @@ function generateAppManifest(workerDomain: string): GitHubAppManifest {
     hook_attributes: {
       url: `${workerDomain}/webhooks/github`
     },
-    redirect_url: `${workerDomain}/gh-setup/callback`,
+    redirect_url: `${workerDomain}/install-complete`,
     callback_urls: [`${workerDomain}/gh-setup/callback`],
     setup_url: `${workerDomain}`,
     public: false,
