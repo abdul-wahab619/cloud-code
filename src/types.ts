@@ -70,6 +70,8 @@ export interface Env {
   GITHUB_APP_CONFIG: DurableObjectNamespace<any>;
   INTERACTIVE_SESSIONS: DurableObjectNamespace<any>;
   DASHBOARD_ASSETS?: Fetcher;
+  RATE_LIMIT_KV?: KVNamespace;
+  ENCRYPTION_KEY?: string;
 }
 
 // Interactive Session State

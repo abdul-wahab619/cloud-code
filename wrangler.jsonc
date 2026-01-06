@@ -42,6 +42,12 @@
 			}
 		]
 	},
+	"kv_namespaces": [
+		{
+			"binding": "RATE_LIMIT_KV",
+			"id": "5e008e38c0d9471ca124d9743e9f6b46"
+		}
+	],
 	"migrations": [
 		{
 			"new_sqlite_classes": ["MyContainer"],
@@ -54,6 +60,9 @@
 		{
 			"new_sqlite_classes": ["InteractiveSessionDO"],
 			"tag": "v6-add-interactive-session-do"
+		},
+		{
+			"tag": "v7-add-kv-and-security"
 		}
 	]
 }

@@ -5,6 +5,7 @@
  */
 
 import { logWithContext } from '../log';
+import { getUsageStats, DEFAULT_QUOTA } from '../quota';
 import type { Env } from '../types';
 
 // ============================================================================
@@ -16,11 +17,47 @@ interface HealthStatus {
   timestamp: string;
   uptime: number;
   version: string;
+  environment: string;
   components: {
     durableObjects: { status: string; message: string };
     containers: { status: string; message: string };
     githubApp: { status: string; configured: boolean };
     claudeConfig: { status: string; configured: boolean };
+    rateLimit: { status: string; configured: boolean };
+  };
+  metrics: {
+    requests: {
+      total: number;
+      byRoute: Record<string, number>;
+      byStatus: Record<string, number>;
+      successRate: number;
+    };
+    containers: {
+      active: number;
+      total: number;
+      errors: number;
+    };
+    averageResponseTime: number;
+    errorRate: number;
+  };
+  quota: {
+    dailyTokens: number;
+    maxDailyTokens: number;
+    remainingTokens: number;
+    dailyCost: number;
+    maxDailyCost: number;
+    remainingCost: number;
+    activeSessions: number;
+    maxConcurrentSessions: number;
+    allowed: boolean;
+    reason?: string;
+  };
+  github?: {
+    appId?: string;
+    installationId?: string;
+    repositoryCount: number;
+    totalWebhooks: number;
+    lastWebhookAt?: string;
   };
 }
 
@@ -55,6 +92,7 @@ const metrics: MetricsData = {
 
 const deploymentStartTime = Date.now();
 const VERSION = '1.0.0';
+const ENVIRONMENT = (typeof process !== 'undefined' && process.env?.ENVIRONMENT) || 'production';
 
 // ============================================================================
 // Metrics Recording
@@ -120,6 +158,15 @@ export async function handleHealthCheck(_request: Request, env: Env): Promise<Re
   const claudeConfig = await claudeConfigResponse.json().catch(() => null);
   const claudeConfigured = !!claudeConfig && !!claudeConfig.anthropicApiKey;
 
+  // Check rate limit configuration
+  const rateLimitConfigured = !!env.RATE_LIMIT_KV;
+
+  // Get quota and usage stats
+  const usageStats = getUsageStats(env);
+
+  // Get webhook stats
+  const webhookStats = await getWebhookStats(env);
+
   // Determine overall health status
   let status: 'healthy' | 'degraded' | 'unhealthy' = 'healthy';
 
@@ -128,32 +175,79 @@ export async function handleHealthCheck(_request: Request, env: Env): Promise<Re
   }
 
   // Calculate error rate
-  const errorRate = metrics.requests.total > 0
-    ? (metrics.requests.byStatus['500'] || 0) / metrics.requests.total
-    : 0;
+  const errorCount = Object.entries(metrics.requests.byStatus)
+    .filter(([code]) => parseInt(code, 10) >= 500)
+    .reduce((sum, [, count]) => sum + count, 0);
+  const errorRate = metrics.requests.total > 0 ? errorCount / metrics.requests.total : 0;
 
   if (errorRate > 0.5) {
     status = 'unhealthy';
   }
+
+  // Check if quota allows operation
+  if (!usageStats.quotaStatus.allowed) {
+    status = 'degraded';
+  }
+
+  // Calculate success rate
+  const successCount = metrics.requests.byStatus['200'] || 0;
+  const successRate = metrics.requests.total > 0 ? successCount / metrics.requests.total : 1;
 
   const healthStatus: HealthStatus = {
     status,
     timestamp: new Date().toISOString(),
     uptime,
     version: VERSION,
+    environment: ENVIRONMENT,
     components: {
       durableObjects: { status: 'operational', message: 'Durable Objects accessible' },
       containers: { status: 'operational', message: `${metrics.containers.active} active containers` },
       githubApp: { status: githubConfigured ? 'configured' : 'not configured', configured: githubConfigured },
-      claudeConfig: { status: claudeConfigured ? 'configured' : 'not configured', configured: claudeConfigured }
-    }
+      claudeConfig: { status: claudeConfigured ? 'configured' : 'not configured', configured: claudeConfigured },
+      rateLimit: { status: rateLimitConfigured ? 'configured' : 'not configured', configured: rateLimitConfigured },
+    },
+    metrics: {
+      requests: {
+        total: metrics.requests.total,
+        byRoute: metrics.requests.byRoute,
+        byStatus: metrics.requests.byStatus,
+        successRate,
+      },
+      containers: {
+        active: metrics.containers.active,
+        total: metrics.containers.total,
+        errors: metrics.containers.errors,
+      },
+      averageResponseTime: metrics.averageResponseTime,
+      errorRate,
+    },
+    quota: {
+      dailyTokens: usageStats.today.totalTokens,
+      maxDailyTokens: DEFAULT_QUOTA.maxDailyTokens,
+      remainingTokens: usageStats.quotaStatus.remainingTokens,
+      dailyCost: usageStats.today.totalCost,
+      maxDailyCost: DEFAULT_QUOTA.maxDailyCost,
+      remainingCost: usageStats.quotaStatus.remainingCost,
+      activeSessions: usageStats.activeSessions,
+      maxConcurrentSessions: DEFAULT_QUOTA.maxConcurrentSessions,
+      allowed: usageStats.quotaStatus.allowed,
+      reason: usageStats.quotaStatus.reason,
+    },
+    github: githubConfigured ? {
+      appId: githubConfig.appId,
+      installationId: githubConfig.installationId,
+      repositoryCount: githubConfig.repositories?.length || 0,
+      totalWebhooks: webhookStats?.totalWebhooks || 0,
+      lastWebhookAt: webhookStats?.lastWebhookAt,
+    } : undefined,
   };
 
   logWithContext('HEALTH_CHECK', 'Health check completed', {
     status,
     githubConfigured,
     claudeConfigured,
-    activeContainers: metrics.containers.active
+    activeContainers: metrics.containers.active,
+    quotaAllowed: usageStats.quotaStatus.allowed,
   });
 
   const httpStatus = status === 'healthy' ? 200 : status === 'degraded' ? 200 : 503;
