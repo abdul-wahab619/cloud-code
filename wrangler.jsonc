@@ -64,5 +64,49 @@
 		{
 			"tag": "v7-add-kv-and-security"
 		}
-	]
+	],
+	"env": {
+		"staging": {
+			"name": "cloud-code-staging",
+			"compatibility_date": "2025-05-23",
+			"containers": [
+				{
+					"class_name": "MyContainer",
+					"image": "./Dockerfile",
+					"max_instances": 10,
+					"name": "cloud-code-staging"
+				}
+			],
+			"durable_objects": {
+				"bindings": [
+					{
+						"class_name": "MyContainer",
+						"name": "MY_CONTAINER"
+					},
+					{
+						"class_name": "GitHubAppConfigDO",
+						"name": "GITHUB_APP_CONFIG"
+					},
+					{
+						"class_name": "InteractiveSessionDO",
+						"name": "INTERACTIVE_SESSIONS"
+					}
+				]
+			},
+			"kv_namespaces": [
+				{
+					"binding": "RATE_LIMIT_KV",
+					"id": "5e008e38c0d9471ca124d9743e9f6b46"
+				}
+			],
+			"assets": {
+				"directory": "dashboard",
+				"binding": "DASHBOARD_ASSETS",
+				"routing": {
+					"include": ["/*"],
+					"exclude": ["/"]
+				}
+			}
+		}
+	}
 }
