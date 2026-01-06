@@ -872,6 +872,50 @@ export class MyContainer extends Container {
       }
     }
 
+    // Handle test-claude requests by setting API key environment variable
+    if (url.pathname === '/test-claude' && request.method === 'POST') {
+      logWithContext('CONTAINER', 'Processing test-claude request');
+
+      try {
+        const testData = await request.json() as { anthropicApiKey: string };
+
+        // Set the API key as environment variable
+        this.envVars.ANTHROPIC_API_KEY = testData.anthropicApiKey;
+
+        logWithContext('CONTAINER', 'API key set for test', {
+          hasKey: !!testData.anthropicApiKey,
+          keyLength: testData.anthropicApiKey?.length
+        });
+
+        // Create a new request with the data
+        const newRequest = new Request(request.url, {
+          method: 'POST',
+          headers: request.headers,
+          body: JSON.stringify(testData)
+        });
+
+        const response = await super.fetch(newRequest);
+
+        logWithContext('CONTAINER', 'Test claude response received', {
+          status: response.status
+        });
+
+        return response;
+      } catch (error) {
+        logWithContext('CONTAINER', 'Error processing test-claude request', {
+          error: error instanceof Error ? error.message : String(error)
+        });
+
+        return new Response(JSON.stringify({
+          error: 'Failed to process test request',
+          message: (error as Error).message
+        }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
     // For all other requests, use default behavior
     logWithContext('CONTAINER', 'Using default container behavior');
     return super.fetch(request);
@@ -1213,6 +1257,66 @@ export default {
         } else {
           response = new Response('Invalid installation request', { status: 400 });
         }
+      }
+
+      // Debug Claude Code connection endpoint
+      else if (pathname === '/test-claude') {
+        logWithContext('MAIN_HANDLER', 'Debug Claude Code connection');
+        routeMatched = true;
+
+        try {
+          const claudeConfigId = (env.GITHUB_APP_CONFIG as any).idFromName('claude-config');
+          const claudeConfigDO = (env.GITHUB_APP_CONFIG as any).get(claudeConfigId);
+          const claudeKeyResponse = await claudeConfigDO.fetch(new Request('http://internal/get-claude-key'));
+          const claudeKeyData = await claudeKeyResponse.json() as { anthropicApiKey: string | null };
+
+          if (!claudeKeyData.anthropicApiKey) {
+            response = new Response(JSON.stringify({ error: 'Claude API key not configured' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json' }
+            });
+          } else {
+            // Get or create container for testing
+            const containerName = 'claude-test-v2';
+            const id = (env.MY_CONTAINER as any).idFromName(containerName);
+            const container = (env.MY_CONTAINER as any).get(id);
+
+            // Pass API key in POST body for the container to set as env var
+            const testResponse = await containerFetch(
+              container,
+              new Request('http://internal/test-claude', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ anthropicApiKey: claudeKeyData.anthropicApiKey })
+              }),
+              {
+                containerName,
+                route: '/test-claude'
+              }
+            );
+
+            const responseBody = await testResponse.text();
+            response = new Response(responseBody, {
+              status: testResponse.status,
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+        } catch (error: any) {
+          response = new Response(JSON.stringify({
+            error: error.message,
+            stack: error.stack
+          }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+      }
+
+      // Dashboard API endpoints
+      else if (pathname.startsWith('/api/')) {
+        logWithContext('MAIN_HANDLER', 'Routing to dashboard API');
+        routeMatched = true;
+        response = await handleDashboardAPI(request, env);
       }
 
       // GitHub webhook endpoint

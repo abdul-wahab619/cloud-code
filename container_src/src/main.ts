@@ -357,36 +357,91 @@ async function processIssue(issueContext: IssueContext, githubToken: string): Pr
       promptLength: prompt.length
     });
 
-    // 4. Query Claude Code in the workspace directory
-    logWithContext('ISSUE_PROCESSOR', 'Starting Claude Code query');
-
-    try {
-      const claudeStartTime = Date.now();
-
-      // Change working directory to the cloned repository
-      const originalCwd = process.cwd();
-      process.chdir(workspaceDir);
-
-      logWithContext('CLAUDE_CODE', 'Changed working directory for Claude Code execution', {
-        originalCwd,
-        newCwd: workspaceDir
-      });
+    // 4. Query Claude Code in the workspace directory using CLI
+      logWithContext('ISSUE_PROCESSOR', 'Starting Claude Code query via CLI');
 
       try {
-        for await (const message of query({
-          prompt,
-          options: { permissionMode: 'bypassPermissions' }
-        })) {
-        turnCount++;
-        results.push(message);
+        const claudeStartTime = Date.now();
 
-        // Log message details (message structure depends on SDK version)
-        logWithContext('CLAUDE_CODE', `Turn ${turnCount} completed`, {
-          type: message.type,
-          messagePreview: JSON.stringify(message),
-          turnCount,
+        // Change working directory to the cloned repository
+        const originalCwd = process.cwd();
+        process.chdir(workspaceDir);
+
+        logWithContext('CLAUDE_CODE', 'Changed working directory for Claude Code execution', {
+          originalCwd,
+          newCwd: workspaceDir
         });
-      }
+
+        try {
+          // Use CLI directly with --print --output-format json
+          const cliOutput = await new Promise<string>((resolve, reject) => {
+            const cliProcess = spawn('claude', [
+              '-p', '--print', '--output-format', 'json',
+              '--permission-mode', 'acceptEdits',
+              '--max-turns', '5',
+              prompt
+            ], {
+              stdio: ['ignore', 'pipe', 'pipe'],
+              cwd: workspaceDir,
+              env: {
+                ...process.env,
+                ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || ''
+              }
+            });
+
+            let stdout = '';
+            let stderr = '';
+
+            cliProcess.stdout.on('data', (data) => {
+              stdout += data.toString();
+            });
+
+            cliProcess.stderr.on('data', (data) => {
+              stderr += data.toString();
+            });
+
+            cliProcess.on('close', (code) => {
+              if (code === 0 && stdout) {
+                resolve(stdout);
+              } else {
+                reject(new Error(`CLI exited with code ${code}: ${stderr || stdout}`));
+              }
+            });
+
+            cliProcess.on('error', (err) => {
+              reject(err);
+            });
+          });
+
+          // Parse the JSON output to get the result
+          const cliResult = JSON.parse(cliOutput);
+          logWithContext('CLAUDE_CODE', 'CLI query completed', {
+            subtype: cliResult.subtype,
+            is_error: cliResult.is_error,
+            result: cliResult.result?.substring(0, 200)
+          });
+
+          // Create a mock SDKMessage from the CLI result
+          const resultMessage: SDKMessage = {
+            type: 'result',
+            subtype: cliResult.subtype || 'success',
+            duration_ms: cliResult.duration_ms || 0,
+            duration_api_ms: cliResult.duration_api_ms || cliResult.duration_ms || 0,
+            is_error: cliResult.is_error || false,
+            num_turns: cliResult.num_turns || 1,
+            result: cliResult.result || '',
+            session_id: cliResult.session_id || '',
+            total_cost_usd: cliResult.total_cost_usd || 0,
+            usage: cliResult.usage || {
+              input_tokens: 0,
+              output_tokens: 0,
+              cache_creation_input_tokens: 0,
+              cache_read_input_tokens: 0
+            } as any
+          };
+
+          results.push(resultMessage);
+          turnCount = cliResult.num_turns || 1;
 
       const claudeEndTime = Date.now();
       const claudeDuration = claudeEndTime - claudeStartTime;
@@ -697,6 +752,232 @@ async function processIssueHandler(req: http.IncomingMessage, res: http.ServerRe
   }
 }
 
+// Test Claude Code connection
+async function testClaudeConnection(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  logWithContext('CLAUDE_TEST', 'Testing Claude Code connection');
+
+  // Read request body with a timeout to prevent hanging
+  const requestBody = await new Promise<string>((resolve, reject) => {
+    let body = '';
+    let timeout: NodeJS.Timeout | null = null;
+
+    const cleanup = () => {
+      if (timeout) {
+        clearTimeout(timeout);
+        timeout = null;
+      }
+    };
+
+    timeout = setTimeout(() => {
+      cleanup();
+      logWithContext('CLAUDE_TEST', 'Body reading timeout, using empty body');
+      resolve(body);
+    }, 5000); // 5 second timeout for body reading
+
+    req.on('data', (chunk) => {
+      body += chunk.toString();
+    });
+
+    req.on('end', () => {
+      cleanup();
+      resolve(body);
+    });
+
+    req.on('error', (err) => {
+      cleanup();
+      reject(err);
+    });
+  });
+
+  logWithContext('CLAUDE_TEST', 'Request body read', { bodyLength: requestBody.length });
+
+  try {
+    // Parse API key from request body
+    if (requestBody) {
+      try {
+        const testData = JSON.parse(requestBody);
+        if (testData.anthropicApiKey) {
+          process.env.ANTHROPIC_API_KEY = testData.anthropicApiKey;
+          process.env.ANTHROPIC_AUTH_TOKEN = testData.anthropicApiKey;
+          logWithContext('CLAUDE_TEST', 'API key set from request body', {
+            keyPresent: true,
+            keyLength: testData.anthropicApiKey.length
+          });
+        }
+      } catch (e) {
+        logWithContext('CLAUDE_TEST', 'Failed to parse request body', { error: e });
+      }
+    }
+
+    // Check if API key is set
+    const hasKey = !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
+    const baseUrl = process.env.ANTHROPIC_BASE_URL || 'default';
+
+    logWithContext('CLAUDE_TEST', 'Environment check', {
+      hasKey,
+      baseUrl
+    });
+
+    if (!hasKey) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'API key not set' }));
+      return;
+    }
+
+    // Now test Claude Code CLI availability
+    logWithContext('CLAUDE_TEST', 'Testing Claude CLI availability');
+
+    const cliResult = await new Promise<{ success: boolean; version?: string; error?: string }>((resolve) => {
+      const cliProcess = spawn('claude', ['--version'], {
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      let stdout = '';
+      let stderr = '';
+      let timedOut = false;
+
+      // Set our own timeout
+      const timeoutHandle = setTimeout(() => {
+        timedOut = true;
+        cliProcess.kill();
+        resolve({ success: false, error: 'CLI timed out after 10 seconds' });
+      }, 10000);
+
+      cliProcess.stdout.on('data', (data) => {
+        stdout += data.toString();
+      });
+
+      cliProcess.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
+
+      cliProcess.on('close', (code) => {
+        clearTimeout(timeoutHandle);
+        if (!timedOut) {
+          if (code === 0 && stdout) {
+            resolve({ success: true, version: stdout.trim() });
+          } else {
+            resolve({ success: false, error: `Exit code ${code}: ${stderr || stdout || 'No output'}` });
+          }
+        }
+      });
+
+      cliProcess.on('error', (err) => {
+        clearTimeout(timeoutHandle);
+        if (!timedOut) {
+          resolve({ success: false, error: err.message });
+        }
+      });
+    });
+
+    logWithContext('CLAUDE_TEST', 'CLI test result', cliResult);
+
+    // Now test SDK query if CLI is available
+    let sdkResult: { success: boolean; output?: string; error?: string } | undefined;
+    if (cliResult.success) {
+      logWithContext('CLAUDE_TEST', 'Testing Claude via CLI directly (non-interactive)');
+
+      try {
+        const testDir = '/tmp/test-claude-query';
+        await fs.mkdir(testDir, { recursive: true });
+        logWithContext('CLAUDE_TEST', 'Test directory created', { testDir });
+
+        // Log environment variables for debugging
+        logWithContext('CLAUDE_TEST', 'Environment check', {
+          hasApiKey: !!process.env.ANTHROPIC_API_KEY,
+          hasAuthToken: !!process.env.ANTHROPIC_AUTH_TOKEN,
+          baseUrl: process.env.ANTHROPIC_BASE_URL
+        });
+
+        // Use CLI directly with -p --print for non-interactive execution
+        // Note: Can't use bypassPermissions as root, use acceptEdits instead
+        const cliQueryResult = await new Promise<{ success: boolean; output?: string; error?: string }>((resolve) => {
+          const cliProcess = spawn('claude', ['-p', '--print', '--permission-mode', 'acceptEdits', '--output-format', 'json', 'Say "Hello, World!" in exactly those words.'], {
+            stdio: ['ignore', 'pipe', 'pipe'],
+            cwd: testDir,
+            env: {
+              ...process.env,
+              ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || ''
+            }
+          });
+
+          let stdout = '';
+          let stderr = '';
+          let timedOut = false;
+
+          const timeoutHandle = setTimeout(() => {
+            timedOut = true;
+            cliProcess.kill();
+            resolve({ success: false, error: 'CLI query timed out after 60 seconds' });
+          }, 60000); // 60 second timeout
+
+          cliProcess.stdout.on('data', (data) => {
+            stdout += data.toString();
+          });
+
+          cliProcess.stderr.on('data', (data) => {
+            stderr += data.toString();
+          });
+
+          cliProcess.on('close', (code) => {
+            clearTimeout(timeoutHandle);
+            if (!timedOut) {
+              if (code === 0 && stdout) {
+                resolve({ success: true, output: stdout });
+              } else {
+                resolve({ success: false, error: `Exit code ${code}: ${stderr || stdout || 'No output'}` });
+              }
+            }
+          });
+
+          cliProcess.on('error', (err) => {
+            clearTimeout(timeoutHandle);
+            if (!timedOut) {
+              resolve({ success: false, error: err.message });
+            }
+          });
+        });
+
+        logWithContext('CLAUDE_TEST', 'CLI query result', {
+          success: cliQueryResult.success,
+          outputLength: cliQueryResult.output?.length || 0,
+          error: cliQueryResult.error
+        });
+
+        sdkResult = cliQueryResult;
+
+      } catch (sdkError: any) {
+        logWithContext('CLAUDE_TEST', 'CLI query failed', {
+          error: sdkError.message,
+          stack: sdkError.stack?.substring(0, 500)
+        });
+        sdkResult = { success: false, error: sdkError.message };
+      }
+    }
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      success: cliResult.success && (sdkResult?.success ?? true),
+      message: 'Test endpoint completed',
+      cwd: process.cwd(),
+      cliResult,
+      sdkResult
+    }));
+
+  } catch (error: any) {
+    logWithContext('CLAUDE_TEST', 'Test failed', {
+      error: error.message,
+      stack: error.stack
+    });
+
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      success: false,
+      error: error.message
+    }));
+  }
+}
+
 // Route handler
 async function requestHandler(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
   const { method, url } = req;
@@ -723,6 +1004,9 @@ async function requestHandler(req: http.IncomingMessage, res: http.ServerRespons
       logWithContext('REQUEST_HANDLER', 'Routing to interactive session handler');
       const interactiveHandler = createInteractiveSessionHandler();
       await interactiveHandler(req, res);
+    } else if (url === '/test-claude') {
+      logWithContext('REQUEST_HANDLER', 'Testing Claude Code connection');
+      await testClaudeConnection(req, res);
     } else {
       logWithContext('REQUEST_HANDLER', 'Route not found', { url });
       res.writeHead(404, { 'Content-Type': 'application/json' });
