@@ -20,9 +20,9 @@ export async function handleClaudeSetup(request: Request, origin: string, env: a
         keyPrefix: apiKey ? apiKey.substring(0, 7) + '...' : 'none'
       });
 
-      if (!apiKey || !apiKey.startsWith('sk-ant-')) {
+      if (!apiKey || apiKey.length < 20) {
         logWithContext('CLAUDE_SETUP', 'Invalid API key format provided');
-        throw new Error('Invalid Anthropic API key format');
+        throw new Error('Invalid API key format');
       }
 
       // Store the API key securely in a deployment-specific Durable Object
@@ -243,7 +243,7 @@ export async function handleClaudeSetup(request: Request, origin: string, env: a
 
     <div class="info-box">
         <h3>What you'll need</h3>
-        <p>An Anthropic API key with access to Claude. You can get one from the <a href="https://console.anthropic.com/" target="_blank">Anthropic Console</a>.</p>
+        <p>An API key compatible with Claude Code (Anthropic API key or GLP-compatible proxy key).</p>
     </div>
 
     <div class="steps">
@@ -252,7 +252,7 @@ export async function handleClaudeSetup(request: Request, origin: string, env: a
         <div class="step">
             <div class="step-number">1</div>
             <strong>Get your API Key</strong><br>
-            Visit <a href="https://console.anthropic.com/" target="_blank">console.anthropic.com</a> and create an API key (starts with "sk-ant-").
+            Use an Anthropic API key from <a href="https://console.anthropic.com/" target="_blank">console.anthropic.com</a> or a GLP-compatible proxy key.
         </div>
 
         <div class="step">
@@ -270,15 +270,13 @@ export async function handleClaudeSetup(request: Request, origin: string, env: a
 
     <form method="POST" class="setup-form">
         <div class="form-group">
-            <label for="anthropic_api_key">Anthropic API Key</label>
+            <label for="anthropic_api_key">API Key (Anthropic or GLP-compatible)</label>
             <input
                 type="password"
                 id="anthropic_api_key"
                 name="anthropic_api_key"
-                placeholder="sk-ant-api03-..."
+                placeholder="sk-ant-api03-... or GLP proxy key"
                 required
-                pattern="sk-ant-.*"
-                title="API key must start with 'sk-ant-'"
             >
         </div>
 
