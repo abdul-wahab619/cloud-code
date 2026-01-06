@@ -37,12 +37,12 @@ This is a **Cloudflare Workers Container project** that integrates **Claude Code
 ### Worker Layer (`src/`)
 TypeScript Cloudflare Worker that handles HTTP routing and GitHub webhook processing. Key components:
 
-- **`src/index.ts`** - Main entry point with two Durable Object classes:
-  - `GitHubAppConfigDO` - Stores encrypted credentials (GitHub app config, Claude API key, installation tokens) using SQLite storage
+- **`src/index.ts`** - Main entry point with three Durable Object classes:
+  - `GitHubAppConfigDO` - Stores encrypted GitHub app credentials and installation tokens using SQLite storage
   - `MyContainer` - Extends `@cloudflare/containers` `Container` class, manages container lifecycle
+  - `InteractiveSessionDO` - Manages state for interactive Claude Code sessions
 
 - **Request Router** routes paths to handlers:
-  - `/claude-setup` - Claude API key configuration
   - `/gh-setup` - GitHub app OAuth flow initiation
   - `/gh-setup/callback` - OAuth callback handler
   - `/gh-status` - Configuration status endpoint
@@ -57,8 +57,9 @@ TypeScript Cloudflare Worker that handles HTTP routing and GitHub webhook proces
   - `github_webhooks/installation_change.ts` - Repository added/removed events
   - `github_setup.ts` - GitHub app manifest generation
   - `oauth_callback.ts` - OAuth flow completion
-  - `claude_setup.ts` - Claude API key encryption and storage
   - `interactive.ts` - Interactive mode session management
+  - `health.ts` - Health check and metrics endpoints
+  - `github_status.ts` - Configuration status endpoint
 
 - **Utilities**:
   - `crypto.ts` - AES-256-GCM encryption/decryption, JWT generation for GitHub App auth
@@ -162,13 +163,19 @@ const response = await containerFetch(container, request, {
 
 ## Data Storage (SQLite in Durable Objects)
 
-**GitHubAppConfigDO** maintains three tables:
+**GitHubAppConfigDO** maintains two tables:
 
 1. `github_app_config` - App credentials and repository list
 2. `installation_tokens` - Cached installation tokens with expiry
-3. `claude_config` - Encrypted Anthropic API key
 
 All sensitive data encrypted with AES-256-GCM before storage.
+
+## Centralized API Key
+
+The Claude API key is centrally managed via the `ANTHROPIC_API_KEY` environment variable:
+- Set as a Cloudflare Secret in production
+- All users share the same API key
+- Eliminates user setup friction (no /claude-setup flow needed)
 
 ## Interactive Mode
 
@@ -237,11 +244,16 @@ The container (`container_src/src/interactive_session.ts`) handles interactive s
 
 ## Environment Variables
 
-**Worker-level** (set in `wrangler.jsonc` or `.dev.vars`):
-- None required; all secrets stored encrypted in DO
+**Worker-level** (set in `wrangler.jsonc` or Cloudflare Secrets):
+- `ANTHROPIC_API_KEY` - Claude API key (centralized, shared across all users)
+- `ENCRYPTION_KEY` - AES-256-GCM encryption key for GitHub credentials
+- `RATE_LIMIT_KV` - KV namespace for rate limiting (optional)
 
 **Container-level** (passed dynamically by Worker):
-- `ANTHROPIC_API_KEY` - Claude API key
+- `ANTHROPIC_API_KEY` - Claude API key (from Worker env)
+- `ANTHROPIC_AUTH_TOKEN` - Alias for ANTHROPIC_API_KEY
+- `ANTHROPIC_BASE_URL` - API base URL (default: https://api.z.ai/api/anthropic)
+- `API_TIMEOUT_MS` - Request timeout in milliseconds
 - `GITHUB_TOKEN` - Installation token for API access
 - `ISSUE_ID`, `ISSUE_NUMBER`, `ISSUE_TITLE`, `ISSUE_BODY`, `ISSUE_LABELS`
 - `REPOSITORY_URL`, `REPOSITORY_NAME`
