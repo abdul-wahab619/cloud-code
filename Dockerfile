@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 
 FROM node:22-slim AS base
+# Cache bust for interactive session fixes - 2025-01-06
 
 # Update package lists and install dependencies
 RUN apt-get update && \
@@ -30,6 +31,7 @@ COPY container_src/tsconfig.json ./
 
 # Copy source code
 COPY container_src/src/ ./src/
+# Force rebuild: 2025-01-06-15-40
 
 # Build TypeScript
 RUN npm run build

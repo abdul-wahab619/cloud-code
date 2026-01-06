@@ -6,7 +6,7 @@
 
 import * as http from 'http';
 import { promises as fs } from 'fs';
-import { query, type SDKMessage } from '@anthropic-ai/claude-code';
+import { spawn } from 'child_process';
 import simpleGit from 'simple-git';
 import * as path from 'path';
 import * as readline from 'readline';
@@ -22,6 +22,19 @@ import {
 // ============================================================================
 // Types
 // ============================================================================
+
+interface CLIResult {
+  type: string;
+  subtype: string;
+  duration_ms: number;
+  duration_api_ms: number;
+  is_error: boolean;
+  num_turns: number;
+  result: string;
+  session_id: string;
+  total_cost_usd: number;
+  usage?: any;
+}
 
 interface InteractiveSession {
   id: string;
@@ -135,10 +148,16 @@ function logWithContext(context: string, message: string, data?: any): void {
 }
 
 // ============================================================================
-// Extract Text from SDK Message
+// Extract Text from CLI Result or SDK Message
 // ============================================================================
 
-function getMessageText(message: SDKMessage): string {
+function getMessageText(message: CLIResult | any): string {
+  // Handle CLI result messages
+  if ('result' in message && typeof message.result === 'string' && message.result) {
+    return message.result;
+  }
+
+  // Legacy SDK message handling
   if ('content' in message && typeof message.content === 'string') {
     return message.content;
   }
@@ -170,30 +189,7 @@ function getMessageText(message: SDKMessage): string {
     }
   }
 
-  return JSON.stringify(message);
-}
-
-// ============================================================================
-// Check if Message Requires Input
-// ============================================================================
-
-function requiresInput(message: SDKMessage): boolean {
-  // Check for ask prompts or tool use that requires confirmation
-  const text = getMessageText(message).toLowerCase();
-
-  // Indicators that Claude is asking for input
-  const inputIndicators = [
-    'would you like',
-    'should i',
-    'do you want',
-    'shall i',
-    'proceed?',
-    'continue?',
-    'confirm',
-    'allow me'
-  ];
-
-  return inputIndicators.some(indicator => text.includes(indicator));
+  return 'Processing completed.';
 }
 
 // ============================================================================
@@ -372,53 +368,74 @@ async function runClaudeInteractive(
       // Build conversation context for Claude
       const contextPrompt = buildConversationContext(session, currentPrompt);
 
-      let turnComplete = false;
-      let fullResponse = '';
+      // Execute Claude Code query using CLI (non-streaming for now)
+      const cliResult = await new Promise<CLIResult>((resolve, reject) => {
+        const cliArgs = [
+          '--output-format', 'json', '-p', '--print',
+          '--permission-mode', 'acceptEdits',
+          '--max-turns', '10',
+          contextPrompt
+        ];
 
-      // Execute Claude Code query with streaming
-      for await (const message of query({
-        prompt: contextPrompt,
-        options: { permissionMode: 'bypassPermissions' }
-      })) {
-        if (!streamer.isAlive) break;
-
-        const messageText = getMessageText(message);
-
-        // Stream message to client
-        streamer.send('claude_delta', {
-          turn: session.currentTurn,
-          content: messageText,
-          type: message.type,
-          timestamp: Date.now()
+        logWithContext('INTERACTIVE_SESSION', 'Starting CLI', {
+          args: cliArgs,
+          cwd: workspaceDir,
+          hasApiKey: !!process.env.ANTHROPIC_API_KEY,
+          apiUrl: process.env.ANTHROPIC_BASE_URL
         });
 
-        fullResponse += messageText + '\n\n';
+        const cliProcess = spawn('claude', cliArgs, {
+          stdio: ['ignore', 'pipe', 'pipe'],
+          cwd: workspaceDir,
+          env: {
+            ...process.env,
+            ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || ''
+          }
+        });
 
-        // Check if Claude is asking for input
-        if (requiresInput(message)) {
-          streamer.send('input_request', {
-            prompt: messageText,
-            turn: session.currentTurn,
-            timestamp: Date.now()
-          });
+        let stdout = '';
+        let stderr = '';
 
-          // Wait for user input (this would come from a separate endpoint)
-          // For now, we'll continue with a default response
-          logWithContext('INTERACTIVE_SESSION', 'Input requested from Claude', {
-            prompt: messageText.substring(0, 100)
-          });
+        cliProcess.stdout.on('data', (data) => {
+          stdout += data.toString();
+        });
 
-          // In a full implementation, we would wait here for user input
-          // For now, signal that input is needed and pause
-          session.status = 'waiting_input';
-          break;
-        }
-      }
+        cliProcess.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+
+        cliProcess.on('close', (code) => {
+          if (code === 0 && stdout) {
+            try {
+              resolve(JSON.parse(stdout));
+            } catch (e) {
+              reject(new Error(`Failed to parse CLI output: ${stdout.substring(0, 200)}`));
+            }
+          } else {
+            reject(new Error(`CLI exited with code ${code}: ${stderr || stdout}`));
+          }
+        });
+
+        cliProcess.on('error', (err) => {
+          reject(err);
+        });
+      });
+
+      const messageText = getMessageText(cliResult);
+
+      // Stream result to client
+      streamer.send('claude_delta', {
+        turn: session.currentTurn,
+        content: messageText,
+        type: cliResult.type,
+        subtype: cliResult.subtype,
+        timestamp: Date.now()
+      });
 
       // Add assistant response to history
       session.conversationHistory.push({
         role: 'assistant',
-        content: fullResponse,
+        content: messageText,
         timestamp: Date.now()
       });
 
@@ -426,6 +443,15 @@ async function runClaudeInteractive(
         turn: session.currentTurn,
         timestamp: Date.now()
       });
+
+      // Check if Claude hit max turns without completing
+      if (cliResult.subtype === 'error_max_turns') {
+        streamer.send('status', {
+          message: 'Reached maximum turns without completion',
+          turns: cliResult.num_turns,
+          timestamp: Date.now()
+        });
+      }
 
       // Check for file changes
       if (session.workspaceDir) {
@@ -471,8 +497,7 @@ async function runClaudeInteractive(
         }
       }
 
-      // Check if we should continue (in real implementation, wait for user input)
-      // For now, break after first turn
+      // Break after first turn (single-turn mode for now)
       break;
     }
 
@@ -489,25 +514,8 @@ async function runClaudeInteractive(
 // ============================================================================
 
 function buildConversationContext(session: InteractiveSession, currentPrompt: string): string {
-  let context = '';
-
-  // Add repository context if available
-  if (session.repository) {
-    context += `Working in repository: ${session.repository.name} (branch: ${session.repository.branch})\n\n`;
-  }
-
-  // Add conversation history
-  if (session.conversationHistory.length > 0) {
-    context += '## Conversation History\n\n';
-    for (const msg of session.conversationHistory) {
-      context += `### ${msg.role === 'user' ? 'User' : 'Assistant'}\n\n${msg.content}\n\n`;
-    }
-  }
-
-  // Add current prompt
-  context += `## Current Request\n\n${currentPrompt}`;
-
-  return context;
+  // For now, use the direct prompt without extra context to avoid hitting turn limits
+  return currentPrompt;
 }
 
 // ============================================================================
