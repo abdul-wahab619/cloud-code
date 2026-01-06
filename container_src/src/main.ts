@@ -1,6 +1,5 @@
 import * as http from 'http';
 import { promises as fs } from 'fs';
-import { query, type SDKMessage } from '@anthropic-ai/claude-code';
 import simpleGit from 'simple-git';
 import * as path from 'path';
 import { spawn } from 'child_process';
@@ -331,7 +330,7 @@ async function processIssue(issueContext: IssueContext, githubToken: string): Pr
     title: issueContext.title
   });
 
-  const results: SDKMessage[] = [];
+  const results: any[] = [];
   let turnCount = 0;
 
   try {
@@ -422,8 +421,8 @@ async function processIssue(issueContext: IssueContext, githubToken: string): Pr
             result: cliResult.result?.substring(0, 200)
           });
 
-          // Create a mock SDKMessage from the CLI result
-          const resultMessage: SDKMessage = {
+          // Create a mock result message from the CLI result
+          const resultMessage: any = {
             type: 'result',
             subtype: cliResult.subtype || 'success',
             duration_ms: cliResult.duration_ms || 0,
@@ -1140,8 +1139,8 @@ process.on('unhandledRejection', (reason, promise) => {
   });
 });
 
-// Helper function to extract text from SDK message
-function getMessageText(message: SDKMessage): string {
+// Helper function to extract text from CLI result message
+function getMessageText(message: any): string {
   // Handle CLI result messages (from direct CLI calls)
   if ('result' in message && typeof message.result === 'string' && message.result) {
     return message.result;
@@ -1157,8 +1156,8 @@ function getMessageText(message: SDKMessage): string {
   // If message has content array, extract text from it
   if ('content' in message && Array.isArray(message.content)) {
     const textContent = message.content
-      .filter(item => item.type === 'text')
-      .map(item => item.text)
+      .filter((item: any) => item.type === 'text')
+      .map((item: any) => item.text)
       .join('\n\n');
 
     if (textContent.trim()) {
