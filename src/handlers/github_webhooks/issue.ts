@@ -20,6 +20,20 @@ async function routeToClaudeCodeContainer(issue: any, repository: any, env: any,
     repository: repository.full_name
   });
 
+  // Check for centralized Claude API key
+  logWithContext('CLAUDE_ROUTING', 'Checking centralized Claude API key');
+
+  const claudeApiKey = env.ANTHROPIC_API_KEY;
+
+  logWithContext('CLAUDE_ROUTING', 'Claude API key check', {
+    hasApiKey: !!claudeApiKey
+  });
+
+  if (!claudeApiKey) {
+    logWithContext('CLAUDE_ROUTING', 'Claude API key not configured');
+    throw new Error('Claude API key not configured. Please set the ANTHROPIC_API_KEY environment variable.');
+  }
+
   // Create unique container for this issue
   const id = (env.MY_CONTAINER as any).idFromName(containerName);
   const container = (env.MY_CONTAINER as any).get(id);
@@ -34,28 +48,11 @@ async function routeToClaudeCodeContainer(issue: any, repository: any, env: any,
     hasToken: !!tokenData.token
   });
 
-  // Get Claude API key from secure storage
-  logWithContext('CLAUDE_ROUTING', 'Retrieving Claude API key');
-
-  const claudeConfigId = (env.GITHUB_APP_CONFIG as any).idFromName('claude-config');
-  const claudeConfigDO = (env.GITHUB_APP_CONFIG as any).get(claudeConfigId);
-  const claudeKeyResponse = await claudeConfigDO.fetch(new Request('http://internal/get-claude-key'));
-  const claudeKeyData = await claudeKeyResponse.json() as { anthropicApiKey: string | null };
-
-  logWithContext('CLAUDE_ROUTING', 'Claude API key check', {
-    hasApiKey: !!claudeKeyData.anthropicApiKey
-  });
-
-  if (!claudeKeyData.anthropicApiKey) {
-    logWithContext('CLAUDE_ROUTING', 'Claude API key not configured');
-    throw new Error('Claude API key not configured. Please visit /claude-setup first.');
-  }
-
   // Prepare environment variables for the container
   const issueContext = {
     // Claude Code GLM configuration
-    ANTHROPIC_AUTH_TOKEN: claudeKeyData.anthropicApiKey,
-    ANTHROPIC_API_KEY: claudeKeyData.anthropicApiKey,
+    ANTHROPIC_AUTH_TOKEN: claudeApiKey,
+    ANTHROPIC_API_KEY: claudeApiKey,
     ANTHROPIC_BASE_URL: 'https://api.z.ai/api/anthropic',
     API_TIMEOUT_MS: '3000000',
     // GitHub configuration
@@ -106,7 +103,7 @@ async function routeToClaudeCodeContainer(issue: any, repository: any, env: any,
 
     // Parse container response
     const containerResponse: ContainerResponse = await response.json();
-    
+
     logWithContext('CLAUDE_ROUTING', 'Container response parsed', {
       success: containerResponse.success,
       message: containerResponse.message,

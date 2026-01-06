@@ -2,7 +2,6 @@ import { Container, loadBalance, getContainer } from '@cloudflare/containers';
 import { decrypt, generateInstallationToken } from './crypto';
 import { containerFetch, getRouteFromRequest } from './fetch';
 import { handleOAuthCallback } from './handlers/oauth_callback';
-import { handleClaudeSetup } from './handlers/claude_setup';
 import { handleGitHubSetup } from './handlers/github_setup';
 import { handleGitHubStatus } from './handlers/github_status';
 import { handleGitHubWebhook } from './handlers/github_webhook';
@@ -70,17 +69,6 @@ export class GitHubAppConfigDO {
         token TEXT NOT NULL,
         expires_at TEXT NOT NULL,
         created_at TEXT NOT NULL
-      )
-    `);
-
-    // Create claude_config table
-    this.storage.sql.exec(`
-      CREATE TABLE IF NOT EXISTS claude_config (
-        id INTEGER PRIMARY KEY,
-        anthropic_api_key TEXT NOT NULL,
-        claude_setup_at TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
       )
     `);
 
@@ -225,29 +213,6 @@ export class GitHubAppConfigDO {
       }
 
       return new Response(JSON.stringify({ token: result.token }));
-    }
-
-    if (url.pathname === '/store-claude-key' && request.method === 'POST') {
-      logWithContext('DURABLE_OBJECT', 'Storing Claude API key');
-
-      const claudeData = await request.json() as { anthropicApiKey: string; claudeSetupAt: string };
-
-      await this.storeClaudeApiKey(claudeData.anthropicApiKey, claudeData.claudeSetupAt);
-
-      logWithContext('DURABLE_OBJECT', 'Claude API key stored successfully');
-      return new Response('OK');
-    }
-
-    if (url.pathname === '/get-claude-key' && request.method === 'GET') {
-      logWithContext('DURABLE_OBJECT', 'Retrieving Claude API key');
-
-      const apiKey = await this.getDecryptedClaudeApiKey();
-
-      logWithContext('DURABLE_OBJECT', 'Claude API key retrieved', {
-        hasApiKey: !!apiKey
-      });
-
-      return new Response(JSON.stringify({ anthropicApiKey: apiKey }));
     }
 
     logWithContext('DURABLE_OBJECT', 'Unknown endpoint requested', {
@@ -496,53 +461,6 @@ export class GitHubAppConfigDO {
     );
   }
 
-  // Claude Code API key management
-  async storeClaudeApiKey(encryptedApiKey: string, setupTimestamp: string): Promise<void> {
-    await this.storeClaudeApiKeySQLite(encryptedApiKey, setupTimestamp);
-  }
-
-  private async storeClaudeApiKeySQLite(encryptedApiKey: string, setupTimestamp: string): Promise<void> {
-    const now = new Date().toISOString();
-
-    this.storage.sql.exec(
-      `INSERT OR REPLACE INTO claude_config (
-        id, anthropic_api_key, claude_setup_at, created_at, updated_at
-      ) VALUES (1, ?, ?, ?, ?)`,
-      encryptedApiKey,
-      setupTimestamp,
-      now,
-      now
-    );
-  }
-
-  async getDecryptedClaudeApiKey(): Promise<string | null> {
-    try {
-      const cursor = this.storage.sql.exec('SELECT * FROM claude_config WHERE id = 1 LIMIT 1');
-      const results = cursor.toArray();
-
-      if (results.length === 0) {
-        logWithContext('DURABLE_OBJECT', 'No Claude config found in SQLite storage');
-        return null;
-      }
-
-      const row = results[0];
-
-      logWithContext('DURABLE_OBJECT', 'Decrypting Claude API key from SQLite', {
-        setupAt: row.claude_setup_at
-      });
-
-      const decryptedKey = await decrypt(row.anthropic_api_key as string);
-
-      logWithContext('DURABLE_OBJECT', 'Claude API key decrypted successfully');
-      return decryptedKey;
-    } catch (error) {
-      logWithContext('DURABLE_OBJECT', 'Failed to decrypt Claude API key from SQLite', {
-        error: error instanceof Error ? error.message : String(error)
-      });
-      return null;
-    }
-  }
-
   // SQLite-specific enhancement methods
   async getWebhookStats(): Promise<{ totalWebhooks: number; lastWebhookAt: string | null }> {
     const cursor = this.storage.sql.exec(`
@@ -588,19 +506,14 @@ export class GitHubAppConfigDO {
   async getInstallationStats(): Promise<{
     appId: string | null;
     repositoryCount: number;
-    hasClaudeConfig: boolean;
     installationId: string | null;
     createdAt: string | null;
   }> {
     const config = await this.getAppConfig();
-    const claudeCursor = this.storage.sql.exec('SELECT COUNT(*) as count FROM claude_config');
-    const claudeResults = claudeCursor.toArray();
-    const hasClaudeConfig = claudeResults.length > 0 && (claudeResults[0].count as number) > 0;
 
     return {
       appId: config?.appId || null,
       repositoryCount: config?.repositories.length || 0,
-      hasClaudeConfig,
       installationId: config?.installationId || null,
       createdAt: config?.createdAt || null
     };
@@ -872,50 +785,6 @@ export class MyContainer extends Container {
       }
     }
 
-    // Handle test-claude requests by setting API key environment variable
-    if (url.pathname === '/test-claude' && request.method === 'POST') {
-      logWithContext('CONTAINER', 'Processing test-claude request');
-
-      try {
-        const testData = await request.json() as { anthropicApiKey: string };
-
-        // Set the API key as environment variable
-        this.envVars.ANTHROPIC_API_KEY = testData.anthropicApiKey;
-
-        logWithContext('CONTAINER', 'API key set for test', {
-          hasKey: !!testData.anthropicApiKey,
-          keyLength: testData.anthropicApiKey?.length
-        });
-
-        // Create a new request with the data
-        const newRequest = new Request(request.url, {
-          method: 'POST',
-          headers: request.headers,
-          body: JSON.stringify(testData)
-        });
-
-        const response = await super.fetch(newRequest);
-
-        logWithContext('CONTAINER', 'Test claude response received', {
-          status: response.status
-        });
-
-        return response;
-      } catch (error) {
-        logWithContext('CONTAINER', 'Error processing test-claude request', {
-          error: error instanceof Error ? error.message : String(error)
-        });
-
-        return new Response(JSON.stringify({
-          error: 'Failed to process test request',
-          message: (error as Error).message
-        }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-    }
-
     // For all other requests, use default behavior
     logWithContext('CONTAINER', 'Using default container behavior');
     return super.fetch(request);
@@ -967,15 +836,8 @@ export default {
     let routeMatched = false;
 
     try {
-      // Claude Code Setup Route
-      if (pathname === '/claude-setup') {
-        logWithContext('MAIN_HANDLER', 'Routing to Claude setup');
-        routeMatched = true;
-        response = await handleClaudeSetup(request, url.origin, env);
-      }
-
       // GitHub App Setup Routes
-      else if (pathname === '/gh-setup') {
+      if (pathname === '/gh-setup') {
         logWithContext('MAIN_HANDLER', 'Routing to GitHub setup');
         routeMatched = true;
         response = await handleGitHubSetup(request, url.origin);
@@ -1256,59 +1118,6 @@ export default {
           });
         } else {
           response = new Response('Invalid installation request', { status: 400 });
-        }
-      }
-
-      // Debug Claude Code connection endpoint
-      else if (pathname === '/test-claude') {
-        logWithContext('MAIN_HANDLER', 'Debug Claude Code connection');
-        routeMatched = true;
-
-        try {
-          const claudeConfigId = (env.GITHUB_APP_CONFIG as any).idFromName('claude-config');
-          const claudeConfigDO = (env.GITHUB_APP_CONFIG as any).get(claudeConfigId);
-          const claudeKeyResponse = await claudeConfigDO.fetch(new Request('http://internal/get-claude-key'));
-          const claudeKeyData = await claudeKeyResponse.json() as { anthropicApiKey: string | null };
-
-          if (!claudeKeyData.anthropicApiKey) {
-            response = new Response(JSON.stringify({ error: 'Claude API key not configured' }), {
-              status: 400,
-              headers: { 'Content-Type': 'application/json' }
-            });
-          } else {
-            // Get or create container for testing
-            const containerName = 'claude-test-v2';
-            const id = (env.MY_CONTAINER as any).idFromName(containerName);
-            const container = (env.MY_CONTAINER as any).get(id);
-
-            // Pass API key in POST body for the container to set as env var
-            const testResponse = await containerFetch(
-              container,
-              new Request('http://internal/test-claude', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ anthropicApiKey: claudeKeyData.anthropicApiKey })
-              }),
-              {
-                containerName,
-                route: '/test-claude'
-              }
-            );
-
-            const responseBody = await testResponse.text();
-            response = new Response(responseBody, {
-              status: testResponse.status,
-              headers: { 'Content-Type': 'application/json' }
-            });
-          }
-        } catch (error: any) {
-          response = new Response(JSON.stringify({
-            error: error.message,
-            stack: error.stack
-          }), {
-            status: 500,
-            headers: { 'Content-Type': 'application/json' }
-          });
         }
       }
 

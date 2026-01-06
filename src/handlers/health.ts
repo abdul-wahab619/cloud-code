@@ -22,7 +22,7 @@ interface HealthStatus {
     durableObjects: { status: string; message: string };
     containers: { status: string; message: string };
     githubApp: { status: string; configured: boolean };
-    claudeConfig: { status: string; configured: boolean };
+    claudeApiKey: { status: string; configured: boolean };
     rateLimit: { status: string; configured: boolean };
   };
   metrics: {
@@ -151,12 +151,8 @@ export async function handleHealthCheck(_request: Request, env: Env): Promise<Re
   const githubConfig = await githubConfigResponse.json().catch(() => null);
   const githubConfigured = !!githubConfig && !!githubConfig.appId;
 
-  // Check Claude configuration
-  const claudeConfigId = (env.GITHUB_APP_CONFIG as any).idFromName('claude-config');
-  const claudeConfigDO = (env.GITHUB_APP_CONFIG as any).get(claudeConfigId);
-  const claudeConfigResponse = await claudeConfigDO.fetch(new Request('http://internal/get-claude-key'));
-  const claudeConfig = await claudeConfigResponse.json().catch(() => null);
-  const claudeConfigured = !!claudeConfig && !!claudeConfig.anthropicApiKey;
+  // Check centralized Claude API key configuration
+  const claudeKeyConfigured = !!env.ANTHROPIC_API_KEY;
 
   // Check rate limit configuration
   const rateLimitConfigured = !!env.RATE_LIMIT_KV;
@@ -170,7 +166,7 @@ export async function handleHealthCheck(_request: Request, env: Env): Promise<Re
   // Determine overall health status
   let status: 'healthy' | 'degraded' | 'unhealthy' = 'healthy';
 
-  if (!githubConfigured && !claudeConfigured) {
+  if (!githubConfigured && !claudeKeyConfigured) {
     status = 'degraded';
   }
 
@@ -203,7 +199,7 @@ export async function handleHealthCheck(_request: Request, env: Env): Promise<Re
       durableObjects: { status: 'operational', message: 'Durable Objects accessible' },
       containers: { status: 'operational', message: `${metrics.containers.active} active containers` },
       githubApp: { status: githubConfigured ? 'configured' : 'not configured', configured: githubConfigured },
-      claudeConfig: { status: claudeConfigured ? 'configured' : 'not configured', configured: claudeConfigured },
+      claudeApiKey: { status: claudeKeyConfigured ? 'configured' : 'not configured', configured: claudeKeyConfigured },
       rateLimit: { status: rateLimitConfigured ? 'configured' : 'not configured', configured: rateLimitConfigured },
     },
     metrics: {
@@ -238,14 +234,14 @@ export async function handleHealthCheck(_request: Request, env: Env): Promise<Re
       installationId: githubConfig.installationId,
       repositoryCount: githubConfig.repositories?.length || 0,
       totalWebhooks: webhookStats?.totalWebhooks || 0,
-      lastWebhookAt: webhookStats?.lastWebhookAt,
+      lastWebhookAt: webhookStats?.lastWebhookAt ?? undefined,
     } : undefined,
   };
 
   logWithContext('HEALTH_CHECK', 'Health check completed', {
     status,
     githubConfigured,
-    claudeConfigured,
+    claudeKeyConfigured,
     activeContainers: metrics.containers.active,
     quotaAllowed: usageStats.quotaStatus.allowed,
   });

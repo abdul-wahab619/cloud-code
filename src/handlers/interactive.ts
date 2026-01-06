@@ -64,6 +64,14 @@ export async function handleStartInteractiveSession(
       } satisfies StartInteractiveSessionResponse, { status: 400 });
     }
 
+    // Check for centralized Claude API key
+    if (!env.ANTHROPIC_API_KEY) {
+      return Response.json({
+        success: false,
+        error: 'Claude API key not configured'
+      } satisfies StartInteractiveSessionResponse, { status: 400 });
+    }
+
     // Generate session ID
     const sessionId = generateSessionId();
 
@@ -85,23 +93,9 @@ export async function handleStartInteractiveSession(
       } satisfies InteractiveSessionState)
     }));
 
-    // Get credentials
-    const claudeConfigId = (env.GITHUB_APP_CONFIG as any).idFromName('claude-config');
-    const claudeConfigDO = (env.GITHUB_APP_CONFIG as any).get(claudeConfigId);
-    const claudeKeyResponse = await claudeConfigDO.fetch(new Request('http://internal/get-claude-key'));
-    const claudeKeyData = await claudeKeyResponse.json() as { anthropicApiKey: string | null };
-
-    if (!claudeKeyData.anthropicApiKey) {
-      return Response.json({
-        success: false,
-        error: 'Claude API key not configured'
-      } satisfies StartInteractiveSessionResponse, { status: 400 });
-    }
-
     // Get GitHub token if repository is provided
     let githubToken: string | undefined;
     if (body.repository) {
-      // Use github-app-config DO (not claude-config) for installation token
       const githubConfigId = (env.GITHUB_APP_CONFIG as any).idFromName('github-app-config');
       const githubConfigDO = (env.GITHUB_APP_CONFIG as any).get(githubConfigId);
       const tokenResponse = await githubConfigDO.fetch(new Request('http://internal/get-installation-token'));
@@ -120,7 +114,7 @@ export async function handleStartInteractiveSession(
       prompt: body.prompt,
       repository: body.repository,
       // GLM configuration
-      anthropicApiKey: claudeKeyData.anthropicApiKey,
+      anthropicApiKey: env.ANTHROPIC_API_KEY,
       anthropicBaseUrl: 'https://api.z.ai/api/anthropic',
       apiTimeoutMs: '3000000',
       githubToken,

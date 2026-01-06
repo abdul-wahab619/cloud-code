@@ -59,9 +59,6 @@ export interface GitHubAppConfig {
   createdAt: string;
   lastWebhookAt?: string;
   webhookCount: number;
-  // Claude Code integration
-  anthropicApiKey?: string; // encrypted
-  claudeSetupAt?: string;
 }
 
 // Environment bindings
@@ -72,6 +69,7 @@ export interface Env {
   DASHBOARD_ASSETS?: Fetcher;
   RATE_LIMIT_KV?: KVNamespace;
   ENCRYPTION_KEY?: string;
+  ANTHROPIC_API_KEY?: string; // Centralized API key for the service
 }
 
 // Interactive Session State

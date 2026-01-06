@@ -14,23 +14,19 @@ export async function handleGitHubStatus(_request: Request, env: any): Promise<R
       const githubConfig = await githubConfigResponse.json().catch(() => null);
       const githubAppConfigured = !!githubConfig && !!githubConfig.appId;
 
-      // Check Claude configuration
-      const claudeConfigId = (env.GITHUB_APP_CONFIG as any).idFromName('claude-config');
-      const claudeConfigDO = (env.GITHUB_APP_CONFIG as any).get(claudeConfigId);
-      const claudeConfigResponse = await claudeConfigDO.fetch(new Request('http://internal/get-claude-key'));
-      const claudeConfig = await claudeConfigResponse.json().catch(() => null);
-      const claudeConfigured = !!claudeConfig && !!claudeConfig.anthropicApiKey;
+      // Check centralized Claude API key configuration
+      const claudeKeyConfigured = !!env.ANTHROPIC_API_KEY;
 
       const repositoryCount = githubConfig?.repositories?.length || 0;
 
       const status = {
         githubAppConfigured,
-        claudeConfigured,
+        claudeKeyConfigured,
         repositoryCount,
         appId: githubConfig?.appId || null,
         installationId: githubConfig?.installationId || null,
         owner: githubConfig?.owner?.login || null,
-        ready: githubAppConfigured && claudeConfigured
+        ready: githubAppConfigured && claudeKeyConfigured
       };
 
       return new Response(JSON.stringify(status, null, 2), {
@@ -40,7 +36,7 @@ export async function handleGitHubStatus(_request: Request, env: any): Promise<R
       console.error('Error fetching system status:', error);
       return new Response(JSON.stringify({
         githubAppConfigured: false,
-        claudeConfigured: false,
+        claudeKeyConfigured: false,
         repositoryCount: 0,
         ready: false
       }), {
