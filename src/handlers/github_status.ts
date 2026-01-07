@@ -20,6 +20,7 @@ export async function handleGitHubStatus(_request: Request, env: any): Promise<R
       const repositoryCount = githubConfig?.repositories?.length || 0;
 
       const status = {
+        configured: githubAppConfigured, // For backward compatibility with mobile app
         githubAppConfigured,
         claudeKeyConfigured,
         repositoryCount,
@@ -35,6 +36,7 @@ export async function handleGitHubStatus(_request: Request, env: any): Promise<R
     } catch (error) {
       console.error('Error fetching system status:', error);
       return new Response(JSON.stringify({
+        configured: false,
         githubAppConfigured: false,
         claudeKeyConfigured: false,
         repositoryCount: 0,

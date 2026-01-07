@@ -1,3 +1,4 @@
+// Cache bust: v2
 import { useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
@@ -78,6 +79,9 @@ export default function SettingsScreen() {
     }
   };
 
+  // Check if GitHub is configured (supports both old and new API responses)
+  const isGitHubConfigured = status?.configured || status?.githubAppConfigured;
+
   return (
     <ScrollView style={styles.flex1}>
       {/* Header */}
@@ -90,30 +94,30 @@ export default function SettingsScreen() {
         <Card title="GitHub Configuration">
           <View style={styles.spaceY4}>
             <View style={styles.row}>
-              <StatusDot status={status?.configured ? 'completed' : 'pending'} />
+              <StatusDot status={isGitHubConfigured ? 'completed' : 'pending'} />
               <Text
                 style={[
                   styles.statusText,
                   {
                     color:
-                      status?.configured
+                      isGitHubConfigured
                         ? colors.success
                         : colors.warning,
                   },
                 ]}
               >
-                {status?.configured ? 'GitHub App Connected' : 'GitHub Not Connected'}
+                {isGitHubConfigured ? 'GitHub App Connected' : 'GitHub Not Connected'}
               </Text>
             </View>
             <Text style={styles.textMuted}>
-              {status?.configured
+              {isGitHubConfigured
                 ? 'Your GitHub App is properly configured and connected.'
                 : 'Install the GitHub App to enable automatic issue processing.'}
             </Text>
             <Button
-              label={status?.configured ? 'Reconfigure GitHub' : 'Connect GitHub App'}
+              label={isGitHubConfigured ? 'Reconfigure GitHub' : 'Connect GitHub App'}
               icon={<Ionicons name="logo-github" size={18} color="currentColor" />}
-              variant={status?.configured ? 'outline' : 'primary'}
+              variant={isGitHubConfigured ? 'outline' : 'primary'}
               onPress={openGitHubSetup}
             />
           </View>

@@ -40,8 +40,9 @@ export interface Issue {
 }
 
 export interface GitHubStatus {
-  configured: boolean;
+  configured?: boolean;
   githubAppConfigured?: boolean;
+  claudeKeyConfigured?: boolean;
   claudeConfigured?: boolean;
 }
 
