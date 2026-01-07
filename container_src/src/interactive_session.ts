@@ -85,6 +85,49 @@ interface InteractiveSessionConfig {
     permissionMode?: 'bypassPermissions' | 'required';
     createPR?: boolean;
   };
+  isContinuation?: boolean; // Flag to indicate this is a follow-up message
+}
+
+// ============================================================================
+// Session Storage (in-memory for multi-turn conversations)
+// ============================================================================
+
+const activeSessions = new Map<string, InteractiveSession>();
+
+// Session timeout - remove sessions inactive for more than 30 minutes
+const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
+
+// Clean up expired sessions periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [sessionId, session] of activeSessions.entries()) {
+    if (now - session.lastActivityAt > SESSION_TIMEOUT_MS) {
+      logWithContext('SESSION_CLEANUP', 'Removing expired session', {
+        sessionId,
+        lastActivityAt: session.lastActivityAt
+      });
+      activeSessions.delete(sessionId);
+    }
+  }
+}, 5 * 60 * 1000); // Check every 5 minutes
+
+function getSession(sessionId: string): InteractiveSession | undefined {
+  return activeSessions.get(sessionId);
+}
+
+function saveSession(session: InteractiveSession): void {
+  session.lastActivityAt = Date.now();
+  activeSessions.set(session.id, session);
+  logWithContext('SESSION_STORAGE', 'Session saved', {
+    sessionId: session.id,
+    hasWorkspace: !!session.workspaceDir,
+    turns: session.currentTurn
+  });
+}
+
+function endSession(sessionId: string): void {
+  activeSessions.delete(sessionId);
+  logWithContext('SESSION_STORAGE', 'Session ended', { sessionId });
 }
 
 // ============================================================================
@@ -202,21 +245,52 @@ export async function handleInteractiveSession(
   config: InteractiveSessionConfig
 ): Promise<void> {
   const streamer = new SSEStreamer(res);
-  const session: InteractiveSession = {
-    id: config.sessionId,
-    status: 'starting',
-    repository: config.repository,
-    conversationHistory: [],
-    currentTurn: 0,
-    createdAt: Date.now(),
-    lastActivityAt: Date.now()
-  };
 
-  logWithContext('INTERACTIVE_SESSION', 'Starting interactive session', {
-    sessionId: session.id,
-    hasPrompt: !!config.prompt,
-    hasRepository: !!config.repository
-  });
+  // Check if this is a continuation of an existing session
+  const existingSession = getSession(config.sessionId);
+  const isContinuation = config.isContinuation && !!existingSession;
+
+  let session: InteractiveSession;
+
+  if (isContinuation && existingSession) {
+    // Reuse existing session
+    session = existingSession;
+    session.status = 'processing';
+
+    logWithContext('INTERACTIVE_SESSION', 'Continuing existing session', {
+      sessionId: session.id,
+      hasWorkspace: !!session.workspaceDir,
+      previousTurns: session.currentTurn,
+      historyLength: session.conversationHistory.length
+    });
+
+    // Note: For multi-container setups, the workspace may not exist in this container instance
+    // We'll verify and recreate if needed in the workspace setup section below
+    if (session.repository) {
+      streamer.send('status', {
+        message: 'Continuing conversation...',
+        repository: session.repository.name,
+        timestamp: Date.now()
+      });
+    }
+  } else {
+    // Create new session
+    session = {
+      id: config.sessionId,
+      status: 'starting',
+      repository: config.repository,
+      conversationHistory: [],
+      currentTurn: 0,
+      createdAt: Date.now(),
+      lastActivityAt: Date.now()
+    };
+
+    logWithContext('INTERACTIVE_SESSION', 'Starting new interactive session', {
+      sessionId: session.id,
+      hasPrompt: !!config.prompt,
+      hasRepository: !!config.repository
+    });
+  }
 
   try {
     // 1. Set environment variables
@@ -252,23 +326,43 @@ export async function handleInteractiveSession(
     }
 
     // 3. Setup workspace if repository provided
-    if (config.repository) {
+    // For continuation: verify workspace exists or recreate it
+    // For new sessions: clone if repository provided
+    let needsWorkspaceSetup = false;
+    let workspaceExists = false;
+
+    if (session.repository && session.workspaceDir) {
+      // Verify the workspace directory actually exists (might be on different container)
+      try {
+        await fs.access(session.workspaceDir);
+        workspaceExists = true;
+      } catch {
+        logWithContext('INTERACTIVE_SESSION', 'Workspace directory not accessible, will recreate', {
+          workspaceDir: session.workspaceDir
+        });
+        session.workspaceDir = undefined; // Clear to trigger recreation
+      }
+    }
+
+    if (session.repository && !session.workspaceDir) {
+      needsWorkspaceSetup = true;
+      const action = isContinuation ? 'Reconnecting to repository' : 'Cloning repository';
       streamer.send('status', {
-        message: `Cloning repository: ${config.repository.name}...`,
+        message: `${action}: ${session.repository.name}...`,
         timestamp: Date.now()
       });
 
       try {
-        const branch = config.repository.branch || 'main';
-        session.workspaceDir = await setupWorkspace(config.repository.url, session.id);
+        const branch = session.repository.branch || 'main';
+        session.workspaceDir = await setupWorkspace(session.repository.url, session.id);
         session.repository = {
-          ...config.repository,
+          ...session.repository,
           branch
         };
 
         streamer.send('status', {
-          message: 'Repository cloned successfully',
-          repository: config.repository.name,
+          message: isContinuation ? 'Repository reconnected' : 'Repository cloned successfully',
+          repository: session.repository.name,
           timestamp: Date.now()
         });
       } catch (repoError) {
@@ -276,7 +370,7 @@ export async function handleInteractiveSession(
         // Check if it's a clone error (likely invalid repository)
         if (errorMsg.includes('clone') || errorMsg.includes('git') || errorMsg.includes('repository')) {
           streamer.send('error', {
-            message: `Failed to access repository "${config.repository.name}". Please verify the repository exists and you have access to it.`,
+            message: `Failed to access repository "${session.repository.name}". Please verify the repository exists and you have access to it.`,
             details: errorMsg,
             timestamp: Date.now()
           });
@@ -284,18 +378,25 @@ export async function handleInteractiveSession(
         }
         throw repoError;
       }
-    } else {
+    } else if (!session.workspaceDir) {
       // No repository - run in general chat mode
       streamer.send('status', {
         message: 'Starting general chat mode (no repository selected)',
+        timestamp: Date.now()
+      });
+    } else if (workspaceExists && session.repository) {
+      streamer.send('status', {
+        message: 'Using existing workspace',
+        repository: session.repository.name,
         timestamp: Date.now()
       });
     }
 
     // 4. Initialize GitHub client if available
     let githubClient: ContainerGitHubClient | undefined;
-    if (config.githubToken && config.repository) {
-      const [owner, repo] = config.repository.name.split('/');
+    const repoName = session.repository?.name || config.repository?.name;
+    if (config.githubToken && repoName) {
+      const [owner, repo] = repoName.split('/');
       githubClient = new ContainerGitHubClient(config.githubToken, owner, repo);
     }
 
@@ -308,8 +409,10 @@ export async function handleInteractiveSession(
 
     await runClaudeInteractive(session, config.prompt, streamer, githubClient);
 
-    // 6. Complete session
+    // 6. Complete session (but save it for potential continuation)
     session.status = 'completed';
+    saveSession(session); // Save session state for future messages
+
     streamer.send('complete', {
       sessionId: session.id,
       turns: session.currentTurn,
@@ -643,16 +746,30 @@ export function createMessageHandler(): (req: http.IncomingMessage, res: http.Se
         throw new Error('sessionId is required');
       }
 
-      // Create a minimal config for the message
+      // Check if this is a continuation of an existing session
+      const existingSession = getSession(sessionId);
+
+      // Create config for the message, including existing session state if available
       const config: InteractiveSessionConfig = {
         sessionId,
         prompt: request.message,
         anthropicApiKey: process.env.ANTHROPIC_API_KEY,
         anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL,
-        apiTimeoutMs: process.env.API_TIMEOUT_MS
+        apiTimeoutMs: process.env.API_TIMEOUT_MS,
+        isContinuation: !!existingSession, // Mark as continuation if session exists
+        // Pass existing repository info to maintain context
+        repository: existingSession?.repository,
+        options: existingSession?.options as InteractiveSessionConfig['options']
       };
 
-      // Process as a single-turn interactive session
+      logWithContext('MESSAGE_HANDLER', 'Processing message', {
+        sessionId,
+        isContinuation: config.isContinuation,
+        hasRepository: !!config.repository,
+        hasWorkspace: !!existingSession?.workspaceDir
+      });
+
+      // Process as an interactive session (will reuse existing session if found)
       await handleInteractiveSession(req, res, config);
 
     } catch (error) {
