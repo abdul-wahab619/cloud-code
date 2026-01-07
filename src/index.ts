@@ -10,6 +10,17 @@ import { handleDashboardAPI, serveDashboard } from './handlers/dashboard';
 import { handleHealthCheck, handleMetrics, handlePrometheusMetrics, recordRequest, recordContainerStartup, recordContainerShutdown, getRequestCount } from './handlers/health';
 import { logWithContext } from './log';
 import { applyRateLimit, addRateLimitHeaders, checkRateLimit, getClientIdentifier, getCategoryFromPath } from './rate_limit';
+import {
+  captureError,
+  captureMessageLevel,
+  addRequestBreadcrumb,
+  extractRequestContext,
+  withPerformanceTracking,
+  setSentryTags,
+  getSentryConfig,
+  isSentryEnabled,
+  initSentry
+} from './sentry';
 import type { GitHubAppConfig, Repository, Env, InteractiveSessionState } from './types';
 
 /**
@@ -1056,6 +1067,9 @@ export default {
       cfCountry: request.headers.get('cf-ipcountry')
     });
 
+    // Initialize Sentry for error tracking
+    initSentry(env, request);
+
     // Apply rate limiting (skip for OPTIONS requests and health checks)
     let rateLimitInfo: { limit: number; remaining: number; resetAt: number } | null = null;
     if (request.method !== 'OPTIONS' && pathname !== '/health') {
@@ -1644,6 +1658,21 @@ Once both setups are complete, create GitHub issues to trigger automatic Claude 
     } catch (error) {
       const processingTime = Date.now() - startTime;
 
+      // Capture error in Sentry
+      captureError(error, {
+        tags: {
+          pathname,
+          method: request.method,
+          routeMatched: routeMatched.toString(),
+          environment: env.ENVIRONMENT || 'unknown'
+        },
+        extra: {
+          processingTimeMs: processingTime,
+          userAgent: request.headers.get('user-agent'),
+          cfRay: request.headers.get('cf-ray')
+        }
+      });
+
       logWithContext('MAIN_HANDLER', 'Request failed with error', {
         pathname,
         method: request.method,
@@ -1655,7 +1684,7 @@ Once both setups are complete, create GitHub issues to trigger automatic Claude 
 
       return new Response(JSON.stringify({
         error: 'Internal server error',
-        message: error instanceof Error ? error.message : String(error),
+        message: isSentryEnabled(env) ? 'Error has been logged' : error instanceof Error ? error.message : String(error),
         timestamp: new Date().toISOString()
       }), {
         status: 500,

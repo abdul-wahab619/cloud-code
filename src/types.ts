@@ -71,6 +71,9 @@ export interface Env {
   ENCRYPTION_KEY?: string;
   ANTHROPIC_API_KEY?: string; // Centralized API key for the service
   ENVIRONMENT?: string; // 'production' | 'staging' | 'development'
+  SENTRY_DSN?: string; // Sentry DSN for error monitoring
+  SENTRY_TRACES_SAMPLE_RATE?: string; // Performance monitoring sample rate (0-1)
+  SENTRY_PROFILES_SAMPLE_RATE?: string; // Profiling sample rate (0-1)
 }
 
 // Interactive Session State

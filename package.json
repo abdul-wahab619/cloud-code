@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@cloudflare/containers": "0.0.8",
+    "@sentry/cloudflare": "^10.32.1",
     "@tsndr/cloudflare-worker-jwt": "^3.2.0",
     "playwright": "^1.57.0"
   },

@@ -6,6 +6,7 @@
 
 import { logWithContext } from '../log';
 import { getUsageStats, DEFAULT_QUOTA } from '../quota';
+import { getSentryStatus } from '../sentry';
 import type { Env } from '../types';
 
 // ============================================================================
@@ -24,6 +25,7 @@ interface HealthStatus {
     githubApp: { status: string; configured: boolean };
     claudeApiKey: { status: string; configured: boolean };
     rateLimit: { status: string; configured: boolean };
+    sentry: { status: string; configured: boolean; environment?: string };
   };
   metrics: {
     requests: {
@@ -157,6 +159,9 @@ export async function handleHealthCheck(_request: Request, env: Env): Promise<Re
   // Check rate limit configuration
   const rateLimitConfigured = !!env.RATE_LIMIT_KV;
 
+  // Check Sentry configuration
+  const sentryStatus = getSentryStatus(env);
+
   // Get quota and usage stats
   const usageStats = getUsageStats(env);
 
@@ -201,6 +206,11 @@ export async function handleHealthCheck(_request: Request, env: Env): Promise<Re
       githubApp: { status: githubConfigured ? 'configured' : 'not configured', configured: githubConfigured },
       claudeApiKey: { status: claudeKeyConfigured ? 'configured' : 'not configured', configured: claudeKeyConfigured },
       rateLimit: { status: rateLimitConfigured ? 'configured' : 'not configured', configured: rateLimitConfigured },
+      sentry: {
+        status: sentryStatus.enabled ? 'configured' : 'not configured',
+        configured: sentryStatus.enabled,
+        environment: sentryStatus.environment
+      },
     },
     metrics: {
       requests: {
