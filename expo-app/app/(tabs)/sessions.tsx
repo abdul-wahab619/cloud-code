@@ -1,13 +1,16 @@
-import React, { useEffect } from 'react';
-import { View, Text, ScrollView, RefreshControl, Pressable, Modal, StyleSheet } from 'react-native';
-import { useAppStore } from '../lib/useStore';
-import { Button } from '../../components/Button';
-import { Card } from '../../components/Card';
-import { StatusDot } from '../../components/StatusDot';
-import { Input } from '../../components/Input';
-import { formatTime } from '../lib/utils';
-import { colors } from '../lib/styles';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, Text, ScrollView, Pressable, TextInput, StyleSheet, KeyboardAvoidingView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { colors } from '../lib/styles';
+
+// Message types
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+  isStreaming?: boolean;
+}
 
 const styles = StyleSheet.create({
   flex1: { flex: 1, backgroundColor: colors.background },
@@ -16,232 +19,446 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   title: {
     fontSize: 18,
     fontWeight: '600',
     color: colors.foreground,
   },
-  content: { padding: 16 },
-  fab: {
-    position: 'absolute',
-    bottom: 80,
-    right: 16,
-    width: 56,
-    height: 56,
-    backgroundColor: colors.brand,
-    borderRadius: 28,
+  repoSelector: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 8,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: colors.muted,
   },
-  modalBackdrop: {
+  repoText: {
+    fontSize: 13,
+    color: colors.foreground,
+  },
+  chatContainer: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
-  modalContent: {
-    backgroundColor: colors.card,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: 16,
-    paddingBottom: 32,
+  messagesList: {
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    gap: 12,
   },
-  modalHeader: {
+  messageRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.foreground,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 8,
   },
-  sessionRow: {
-    padding: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    marginBottom: 8,
+  messageRowUser: {
+    justifyContent: 'flex-end',
   },
-  statusText: {
-    fontSize: 14,
+  messageBubble: {
+    maxWidth: '80%',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 18,
+  },
+  userBubble: {
+    backgroundColor: colors.brand,
+    borderBottomRightRadius: 4,
+  },
+  assistantBubble: {
+    backgroundColor: colors.muted,
+    borderBottomLeftRadius: 4,
+  },
+  messageText: {
+    fontSize: 15,
+    lineHeight: 20,
     color: colors.foreground,
   },
-  promptText: {
-    fontSize: 14,
-    color: colors.mutedForeground,
-  },
-  timeText: {
-    fontSize: 12,
-    color: colors.mutedForeground,
-  },
-  terminalOutput: {
-    backgroundColor: colors.muted,
-    borderRadius: 8,
+  inputContainer: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
     padding: 12,
-    minHeight: 200,
-    maxHeight: 300,
+    paddingBottom: 24,
   },
-  cancelText: {
-    color: colors.error,
-    fontSize: 14,
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  inputField: {
+    flex: 1,
+    minHeight: 44,
+    maxHeight: 120,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: colors.muted,
+    borderRadius: 22,
+    fontSize: 15,
+    color: colors.foreground,
+  },
+  sendButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.brand,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sendButtonDisabled: {
+    backgroundColor: colors.muted,
+    opacity: 0.5,
   },
   emptyState: {
+    flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 48,
   },
-  emptyText: {
-    fontSize: 18,
+  emptyTitle: {
+    fontSize: 20,
     fontWeight: '600',
     color: colors.foreground,
     marginTop: 16,
     marginBottom: 8,
   },
-  emptySubtext: {
+  emptySubtitle: {
     fontSize: 14,
     color: colors.mutedForeground,
     textAlign: 'center',
-    marginBottom: 24,
+    paddingHorizontal: 32,
+  },
+  timestamp: {
+    fontSize: 11,
+    color: colors.mutedForeground,
+    marginTop: 4,
   },
 });
 
-export default function SessionsScreen() {
-  const { sessions, currentSession, isLoading, refresh, setCurrentSession, clearCurrentSession } = useAppStore();
+export default function ChatScreen() {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [inputText, setInputText] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [repository, setRepository] = useState<string | null>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
 
-  const [modalVisible, setModalVisible] = React.useState(false);
-  const [prompt, setPrompt] = React.useState('');
-  const [repository, setRepository] = React.useState('');
+  const sendMessage = async () => {
+    const text = inputText.trim();
+    if (!text || isProcessing) return;
 
-  useEffect(() => {
-    refresh();
-  }, []);
+    // Add user message
+    const userMessage: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: text,
+      timestamp: Date.now(),
+    };
+    setMessages((prev) => [...prev, userMessage]);
+    setInputText('');
+    setIsProcessing(true);
+
+    try {
+      // If no session, start a new one
+      if (!sessionId) {
+        const response = await fetch('/interactive/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: text,
+            repository: repository ? {
+              url: `https://github.com/${repository}`,
+              name: repository,
+            } : undefined,
+            options: {
+              maxTurns: 10,
+              permissionMode: 'bypassPermissions',
+            },
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to start session');
+        }
+
+        // Get session ID from response header
+        const newSessionId = response.headers.get('X-Session-Id');
+        if (newSessionId) {
+          setSessionId(newSessionId);
+        }
+
+        // Process SSE stream
+        await processSSEStream(response);
+
+        // Update store with session
+        // TODO: Integrate with useAppStore
+      } else {
+        // Send message to existing session
+        const response = await fetch(`/interactive/${sessionId}/message`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to send message');
+        }
+
+        // Process SSE stream
+        await processSSEStream(response);
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      // Add error message
+      const errorMessage: ChatMessage = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `Sorry, something went wrong. ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const processSSEStream = async (response: Response) => {
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body');
+    }
+
+    const decoder = new TextDecoder();
+    let assistantMessageId = Date.now().toString();
+    let assistantContent = '';
+
+    // Create placeholder for streaming message
+    const streamingMessage: ChatMessage = {
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: Date.now(),
+      isStreaming: true,
+    };
+    setMessages((prev) => [...prev, streamingMessage]);
+
+    const streamStartTime = Date.now();
+
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (done) {
+        // Finalize the message
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMessageId
+              ? { ...m, isStreaming: false }
+              : m
+          )
+        );
+
+        // Timeout check (90 seconds max)
+        if (Date.now() - streamStartTime > 90000) {
+          console.warn('Stream timeout');
+          break;
+        }
+        break;
+      }
+
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split('\n');
+
+      for (const line of lines) {
+        if (line.startsWith('event:')) {
+          const eventType = line.substring(7).trim();
+          continue;
+        }
+
+        if (line.startsWith('data:')) {
+          const data = line.substring(5).trim();
+
+          if (data === '[DONE]') continue;
+
+          try {
+            const parsed = JSON.parse(data);
+
+            if (parsed.type === 'claude_delta') {
+              // Append content to current message
+              assistantContent += parsed.content || '';
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantMessageId
+                    ? { ...m, content: assistantContent }
+                    : m
+                )
+              );
+            } else if (parsed.type === 'complete') {
+              // Session complete
+              break;
+            } else if (parsed.type === 'error') {
+              // Error occurred
+              assistantContent += `\n\nError: ${parsed.message || 'Unknown error'}`;
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantMessageId
+                    ? { ...m, content: assistantContent, isStreaming: false }
+                    : m
+                )
+              );
+            }
+          } catch (e) {
+            // Skip invalid JSON
+            console.debug('Failed to parse SSE data:', data);
+          }
+        }
+      }
+    }
+  };
 
   return (
-    <View style={styles.flex1}>
-      <ScrollView
-        refreshControl={
-          <RefreshControl refreshing={isLoading} onRefresh={refresh} tintColor="#6366f1" />
-        }
-      >
+    <KeyboardAvoidingView style={styles.flex1} behavior="padding" keyboardVerticalOffset={0}>
+      <View style={styles.flex1}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Interactive Sessions</Text>
-        </View>
-
-        <View style={styles.content}>
-          {/* Active Session */}
-          {currentSession && (
-            <Card title="Active Session">
-              <View style={[styles.row, styles.justifyBetween, { marginBottom: 12 }]}>
-                <View style={styles.row}>
-                  <StatusDot status="running" />
-                  <Text style={styles.statusText}>Processing...</Text>
-                </View>
-                <Pressable onPress={clearCurrentSession}>
-                  <Text style={styles.cancelText}>Cancel</Text>
-                </Pressable>
-              </View>
-              <View style={styles.terminalOutput}>
-                <ScrollView>
-                  {currentSession.output.map((line, i) => (
-                    <Text key={i} style={{ fontSize: 12, color: colors.foreground, fontFamily: 'monospace' }}>
-                      {line}
-                    </Text>
-                  ))}
-                </ScrollView>
-              </View>
-            </Card>
-          )}
-
-          {/* Sessions List */}
-          {!sessions.length ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="chatbubbles-outline" size={48} color="#71717a" />
-              <Text style={styles.emptyText}>No sessions yet</Text>
-              <Text style={styles.emptySubtext}>Start a new interactive session with Claude Code</Text>
-              <Button label="Start New Session" onPress={() => setModalVisible(true)} />
-            </View>
-          ) : (
-            <Card title="Session History">
-              {sessions.map((session) => (
-                <View key={session.id} style={styles.sessionRow}>
-                  <View style={styles.row}>
-                    <StatusDot status={session.status as any} />
-                    <Text style={styles.statusText}>Session #{session.id.slice(0, 8)}</Text>
-                  </View>
-                  <Text style={styles.promptText}>{session.prompt}</Text>
-                  {session.repository && (
-                    <View style={styles.row}>
-                      <Ionicons name="logo-github" size={14} color="#71717a" />
-                      <Text style={styles.timeText}>{session.repository}</Text>
-                    </View>
-                  )}
-                </View>
-              ))}
-            </Card>
-          )}
-        </View>
-      </ScrollView>
-
-      {/* FAB */}
-      <Pressable style={styles.fab} onPress={() => setModalVisible(true)}>
-        <Ionicons name="add" size={24} color="white" />
-      </Pressable>
-
-      {/* New Session Modal */}
-      <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>New Session</Text>
-              <Pressable onPress={() => setModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#71717a" />
-              </Pressable>
-            </View>
-
-            <Input
-              label="Prompt"
-              placeholder="e.g., Analyze this repository for security issues"
-              value={prompt}
-              onChangeText={setPrompt}
-            />
-
-            <Input
-              label="Repository (optional)"
-              placeholder="owner/repo"
-              value={repository}
-              onChangeText={setRepository}
-            />
-
-            <Button
-              label="Start Session"
-              onPress={async () => {
-                if (!prompt.trim()) return;
-                setModalVisible(false);
-                setCurrentSession({
-                  id: Date.now().toString(),
-                  prompt,
-                  output: [],
-                  status: 'starting',
-                });
+          <Text style={styles.title}>Chat</Text>
+          {repository ? (
+            <Pressable
+              style={styles.repoSelector}
+              onPress={() => {
+                // TODO: Show repository selector
+                setRepository(null);
               }}
-              style={{ marginTop: 16 }}
+            >
+              <Ionicons name="logo-github" size={16} color={colors.foreground} />
+              <Text style={styles.repoText}>{repository}</Text>
+              <Ionicons name="close" size={14} color={colors.mutedForeground} />
+            </Pressable>
+          ) : (
+            <Pressable
+              style={styles.repoSelector}
+              onPress={() => {
+                // TODO: Show repository selector
+                // For now, just use a placeholder
+                setRepository('owner/repo');
+              }}
+            >
+              <Ionicons name="folder-outline" size={16} color={colors.mutedForeground} />
+              <Text style={[styles.repoText, { color: colors.mutedForeground }]}>
+                Select repo
+              </Text>
+            </Pressable>
+          )}
+        </View>
+
+        {/* Messages */}
+        {messages.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="sparkles-outline" size={48} color={colors.mutedForeground} />
+            <Text style={styles.emptyTitle}>Start a conversation</Text>
+            <Text style={styles.emptySubtitle}>
+              Ask Claude Code to help with your code.{'\n'}
+              Select a repository to make changes directly.
+            </Text>
+          </View>
+        ) : (
+          <ScrollView
+            ref={scrollViewRef}
+            style={styles.chatContainer}
+            contentContainerStyle={styles.messagesList}
+            onContentSizeChange={() => {
+              scrollViewRef.current?.scrollToEnd({ animated: true });
+            }}
+          >
+            {messages.map((message) => (
+              <View
+                key={message.id}
+                style={[
+                  styles.messageRow,
+                  message.role === 'user' ? styles.messageRowUser : null,
+                ]}
+              >
+                {message.role === 'assistant' && (
+                  <View
+                    style={[
+                      styles.messageBubble,
+                      styles.assistantBubble,
+                    ]}
+                  >
+                    <Text style={styles.messageText}>
+                      {message.content || (
+                        <Text style={{ color: colors.mutedForeground }}>
+                          {message.isStreaming ? 'Thinking...' : 'No response'}
+                        </Text>
+                      )}
+                    </Text>
+                    {message.isStreaming && (
+                      <Text style={{ fontSize: 11, color: colors.mutedForeground, marginTop: 4 }}>
+                        {' '}
+                        Thinking...
+                      </Text>
+                    )}
+                  </View>
+                )}
+                {message.role === 'user' && (
+                  <View
+                    style={[
+                      styles.messageBubble,
+                      styles.userBubble,
+                    ]}
+                  >
+                    <Text style={styles.messageText}>{message.content}</Text>
+                  </View>
+                )}
+              </View>
+            ))}
+            {isProcessing && (
+              <View style={styles.messageRow}>
+                <View
+                  style={[
+                    styles.messageBubble,
+                    styles.assistantBubble,
+                  ]}
+                >
+                  <Text style={[styles.messageText, { color: colors.mutedForeground }]}>
+                    ...
+                  </Text>
+                </View>
+              </View>
+            )}
+          </ScrollView>
+        )}
+
+        {/* Input */}
+        <View style={styles.inputContainer}>
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.inputField}
+              placeholder="Message Claude Code..."
+              placeholderTextColor={colors.mutedForeground}
+              value={inputText}
+              onChangeText={setInputText}
+              multiline
+              editable={!isProcessing}
+              onSubmitEditing={sendMessage}
             />
+            <Pressable
+              style={[
+                styles.sendButton,
+                (!inputText.trim() || isProcessing) && styles.sendButtonDisabled,
+              ]}
+              onPress={sendMessage}
+              disabled={!inputText.trim() || isProcessing}
+            >
+              <Ionicons
+                name={isProcessing ? 'ellipsis-horizontal' : 'send'}
+                size={20}
+                color="white"
+              />
+            </Pressable>
           </View>
         </View>
-      </Modal>
-    </View>
+      </View>
+    </KeyboardAvoidingView>
   );
 }

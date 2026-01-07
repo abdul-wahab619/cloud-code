@@ -4,7 +4,7 @@ import simpleGit from 'simple-git';
 import * as path from 'path';
 import { spawn } from 'child_process';
 import { ContainerGitHubClient } from './github_client.js';
-import { createInteractiveSessionHandler } from './interactive_session.js';
+import { createInteractiveSessionHandler, createMessageHandler } from './interactive_session.js';
 
 const PORT = 8080;
 
@@ -1033,6 +1033,10 @@ async function requestHandler(req: http.IncomingMessage, res: http.ServerRespons
       logWithContext('REQUEST_HANDLER', 'Routing to interactive session handler');
       const interactiveHandler = createInteractiveSessionHandler();
       await interactiveHandler(req, res);
+    } else if (url === '/message') {
+      logWithContext('REQUEST_HANDLER', 'Routing to message handler for follow-up');
+      const messageHandler = createMessageHandler();
+      await messageHandler(req, res);
     } else if (url === '/test-claude') {
       logWithContext('REQUEST_HANDLER', 'Testing Claude Code connection');
       await testClaudeConnection(req, res);

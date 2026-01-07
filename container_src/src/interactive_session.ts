@@ -580,3 +580,73 @@ export async function getActiveSessionStatus(sessionId: string): Promise<Interac
   // For now, return null
   return null;
 }
+
+// ============================================================================
+// Message Handler for Follow-up Messages
+// ============================================================================
+
+interface MessageRequest {
+  message: string;
+  sessionId?: string;
+}
+
+export function createMessageHandler(): (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void> {
+  return async (req, res) => {
+    logWithContext('MESSAGE_HANDLER', 'Message request received', {
+      method: req.method,
+      url: req.url
+    });
+
+    if (req.method !== 'POST') {
+      res.writeHead(405, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Method not allowed' }));
+      return;
+    }
+
+    try {
+      // Read request body
+      let requestBody = '';
+      for await (const chunk of req) {
+        requestBody += chunk;
+      }
+
+      const request: MessageRequest = JSON.parse(requestBody);
+
+      // Validate required fields
+      if (!request.message) {
+        throw new Error('message is required');
+      }
+
+      // Get session ID from header or body
+      const sessionId = req.headers['x-session-id'] as string || request.sessionId;
+      if (!sessionId) {
+        throw new Error('sessionId is required');
+      }
+
+      // Create a minimal config for the message
+      const config: InteractiveSessionConfig = {
+        sessionId,
+        prompt: request.message,
+        anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+        anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL,
+        apiTimeoutMs: process.env.API_TIMEOUT_MS
+      };
+
+      // Process as a single-turn interactive session
+      await handleInteractiveSession(req, res, config);
+
+    } catch (error) {
+      logWithContext('MESSAGE_HANDLER', 'Request error', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+
+      if (!res.headersSent) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          error: 'Bad request',
+          message: error instanceof Error ? error.message : String(error)
+        }));
+      }
+    }
+  };
+}

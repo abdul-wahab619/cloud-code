@@ -14,7 +14,7 @@ import type { Env, InteractiveSessionState } from '../types';
 // ============================================================================
 
 interface StartInteractiveSessionRequest {
-  prompt: string;
+  prompt?: string; // Optional - session can start without initial message
   repository?: {
     url: string;
     name: string;
@@ -57,11 +57,11 @@ export async function handleStartInteractiveSession(
   try {
     const body: StartInteractiveSessionRequest = await request.json();
 
-    // Validate request
-    if (!body.prompt) {
+    // Validate request - prompt is now optional, session can start empty
+    if (!body.prompt && !body.repository) {
       return Response.json({
         success: false,
-        error: 'prompt is required'
+        error: 'Either prompt or repository must be provided'
       } satisfies StartInteractiveSessionResponse, { status: 400 });
     }
 
@@ -214,6 +214,12 @@ export async function handleInteractiveRequest(
     return await handleStartInteractiveSession(request, env);
   }
 
+  // Send message to active session
+  if (pathname.match(/^\/interactive\/[^\/]+\/message$/) && request.method === 'POST') {
+    const sessionId = pathname.split('/')[2];
+    return await handleSendMessage(sessionId, request, env);
+  }
+
   // Session status (optional - for checking active sessions)
   if (pathname === '/interactive/status' && request.method === 'GET') {
     const sessionId = url.searchParams.get('sessionId');
@@ -262,4 +268,68 @@ export async function handleInteractiveRequest(
 
   // Unknown endpoint
   return Response.json({ error: 'Unknown interactive endpoint' }, { status: 404 });
+}
+
+// ============================================================================
+// Send Message to Active Session
+// ============================================================================
+
+async function handleSendMessage(
+  sessionId: string,
+  request: Request,
+  env: Env
+): Promise<Response> {
+  logWithContext('INTERACTIVE_WORKER', 'Sending message to session', { sessionId });
+
+  try {
+    const body = await request.json() as { message: string };
+
+    if (!body.message) {
+      return Response.json({ error: 'message is required' }, { status: 400 });
+    }
+
+    // Get container for this session
+    const containerName = `interactive-${sessionId}`;
+    const id = (env.MY_CONTAINER as any).idFromName(containerName);
+    const container = (env.MY_CONTAINER as any).get(id);
+
+    // Forward message to container
+    const containerResponse = await containerFetch(
+      container,
+      new Request('http://internal/message', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Session-Id': sessionId
+        },
+        body: JSON.stringify({ message: body.message })
+      }),
+      { containerName, route: '/message' }
+    );
+
+    // Stream the SSE response
+    if (!containerResponse.ok) {
+      return Response.json({
+        error: `Failed to send message: ${containerResponse.status}`
+      }, { status: 500 });
+    }
+
+    return new Response(containerResponse.body, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Session-Id': sessionId
+      }
+    });
+
+  } catch (error) {
+    logWithContext('INTERACTIVE_WORKER', 'Error sending message', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+
+    return Response.json({
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
+  }
 }
