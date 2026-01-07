@@ -86,6 +86,15 @@ interface InteractiveSessionConfig {
     createPR?: boolean;
   };
   isContinuation?: boolean; // Flag to indicate this is a follow-up message
+  session?: {
+    repository?: {
+      url: string;
+      name: string;
+      branch?: string;
+    };
+    messages?: ConversationMessage[];
+    currentTurn?: number;
+  };
 }
 
 // ============================================================================
@@ -246,29 +255,68 @@ export async function handleInteractiveSession(
 ): Promise<void> {
   const streamer = new SSEStreamer(res);
 
-  // Check if this is a continuation of an existing session
+  // Check if this is a continuation with session state from DO
   const existingSession = getSession(config.sessionId);
-  const isContinuation = config.isContinuation && !!existingSession;
+  const hasDOSession = !!config.session;
+  const isContinuation = config.isContinuation && (hasDOSession || !!existingSession);
 
   let session: InteractiveSession;
 
-  if (isContinuation && existingSession) {
-    // Reuse existing session
-    session = existingSession;
-    session.status = 'processing';
+  if (isContinuation) {
+    // Prefer DO-provided session state over in-memory
+    if (config.session) {
+      // Create session from DO state
+      session = {
+        id: config.sessionId,
+        status: 'processing',
+        repository: config.session.repository || config.repository,
+        conversationHistory: (config.session.messages || []).map(m => ({
+          role: m.role as 'user' | 'assistant' | 'system',
+          content: m.content,
+          timestamp: m.timestamp
+        })),
+        currentTurn: config.session.currentTurn || 0,
+        createdAt: Date.now(),
+        lastActivityAt: Date.now()
+      };
 
-    logWithContext('INTERACTIVE_SESSION', 'Continuing existing session', {
-      sessionId: session.id,
-      hasWorkspace: !!session.workspaceDir,
-      previousTurns: session.currentTurn,
-      historyLength: session.conversationHistory.length
-    });
+      logWithContext('INTERACTIVE_SESSION', 'Restoring session from DO', {
+        sessionId: session.id,
+        hasRepository: !!session.repository,
+        previousTurns: session.currentTurn,
+        historyLength: session.conversationHistory.length
+      });
+    } else if (existingSession) {
+      // Fallback to in-memory session
+      session = existingSession;
+      session.status = 'processing';
 
-    // Note: For multi-container setups, the workspace may not exist in this container instance
-    // We'll verify and recreate if needed in the workspace setup section below
+      logWithContext('INTERACTIVE_SESSION', 'Continuing existing in-memory session', {
+        sessionId: session.id,
+        hasWorkspace: !!session.workspaceDir,
+        previousTurns: session.currentTurn,
+        historyLength: session.conversationHistory.length
+      });
+    } else {
+      // No session state available, create new
+      session = {
+        id: config.sessionId,
+        status: 'starting',
+        repository: config.repository,
+        conversationHistory: [],
+        currentTurn: 0,
+        createdAt: Date.now(),
+        lastActivityAt: Date.now()
+      };
+
+      logWithContext('INTERACTIVE_SESSION', 'No session state found, creating new session', {
+        sessionId: session.id
+      });
+    }
+
     if (session.repository) {
       streamer.send('status', {
-        message: 'Continuing conversation...',
+        message: hasDOSession ? 'Continuing conversation...' : 'Continuing conversation...',
         repository: session.repository.name,
         timestamp: Date.now()
       });
@@ -413,10 +461,17 @@ export async function handleInteractiveSession(
     session.status = 'completed';
     saveSession(session); // Save session state for future messages
 
+    // Get the last assistant message for DO persistence
+    const lastAssistantMessage = session.conversationHistory[session.conversationHistory.length - 1];
+    const lastUserMessage = session.conversationHistory.find(m => m.role === 'user');
+
     streamer.send('complete', {
       sessionId: session.id,
       turns: session.currentTurn,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      // Include last messages for DO persistence
+      lastUserMessage: lastUserMessage ? { content: lastUserMessage.content, timestamp: lastUserMessage.timestamp } : undefined,
+      lastAssistantMessage: lastAssistantMessage?.role === 'assistant' ? { content: lastAssistantMessage.content, timestamp: lastAssistantMessage.timestamp } : undefined
     });
 
     logWithContext('INTERACTIVE_SESSION', 'Session completed', {
@@ -711,6 +766,24 @@ export async function getActiveSessionStatus(sessionId: string): Promise<Interac
 interface MessageRequest {
   message: string;
   sessionId?: string;
+  session?: {
+    repository?: {
+      url: string;
+      name: string;
+      branch?: string;
+    };
+    messages?: ConversationMessage[];
+    currentTurn?: number;
+    options?: {
+      maxTurns?: number;
+      permissionMode?: 'bypassPermissions' | 'required';
+      createPR?: boolean;
+    };
+  };
+  anthropicApiKey?: string;
+  anthropicBaseUrl?: string;
+  apiTimeoutMs?: string;
+  githubToken?: string;
 }
 
 export function createMessageHandler(): (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void> {
@@ -746,30 +819,36 @@ export function createMessageHandler(): (req: http.IncomingMessage, res: http.Se
         throw new Error('sessionId is required');
       }
 
-      // Check if this is a continuation of an existing session
+      // Check if this is a continuation with DO-provided session state
+      const hasDOSession = !!request.session;
       const existingSession = getSession(sessionId);
+      const isContinuation = hasDOSession || !!existingSession;
 
-      // Create config for the message, including existing session state if available
+      // Create config for the message, prioritizing DO-provided session state
       const config: InteractiveSessionConfig = {
         sessionId,
         prompt: request.message,
-        anthropicApiKey: process.env.ANTHROPIC_API_KEY,
-        anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL,
-        apiTimeoutMs: process.env.API_TIMEOUT_MS,
-        isContinuation: !!existingSession, // Mark as continuation if session exists
-        // Pass existing repository info to maintain context
-        repository: existingSession?.repository,
-        options: existingSession?.options as InteractiveSessionConfig['options']
+        anthropicApiKey: request.anthropicApiKey || process.env.ANTHROPIC_API_KEY,
+        anthropicBaseUrl: request.anthropicBaseUrl || process.env.ANTHROPIC_BASE_URL,
+        apiTimeoutMs: request.apiTimeoutMs || process.env.API_TIMEOUT_MS,
+        githubToken: request.githubToken,
+        isContinuation,
+        // Pass DO-provided session state if available
+        session: request.session,
+        // Fallback to in-memory session repository info
+        repository: request.session?.repository || existingSession?.repository,
+        options: request.session?.options || existingSession?.options as InteractiveSessionConfig['options']
       };
 
       logWithContext('MESSAGE_HANDLER', 'Processing message', {
         sessionId,
-        isContinuation: config.isContinuation,
+        isContinuation,
+        hasDOSession,
         hasRepository: !!config.repository,
-        hasWorkspace: !!existingSession?.workspaceDir
+        messagesCount: request.session?.messages?.length || 0
       });
 
-      // Process as an interactive session (will reuse existing session if found)
+      // Process as an interactive session (will reuse session state if found)
       await handleInteractiveSession(req, res, config);
 
     } catch (error) {

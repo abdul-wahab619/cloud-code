@@ -94,6 +94,19 @@ export async function handleStartInteractiveSession(
       } satisfies InteractiveSessionState)
     }));
 
+    // Save initial user message to DO if provided
+    if (body.prompt) {
+      await sessionDOStub.fetch(new Request('http://internal/add-message', {
+        method: 'POST',
+        body: JSON.stringify({
+          sessionId,
+          role: 'user',
+          content: body.prompt,
+          turnNumber: 1
+        })
+      }));
+    }
+
     // Get GitHub token if repository is provided
     let githubToken: string | undefined;
     if (body.repository) {
@@ -227,11 +240,11 @@ export async function handleInteractiveRequest(
       return Response.json({ error: 'sessionId is required' }, { status: 400 });
     }
 
-    // Check session status from session DO
+    // Check session status with messages from session DO
     const sessionDO = (env.INTERACTIVE_SESSIONS as any).idFromName('session-manager');
     const sessionDOStub = (env.INTERACTIVE_SESSIONS as any).get(sessionDO);
     const statusResponse = await sessionDOStub.fetch(
-      new Request(`http://internal/get?sessionId=${encodeURIComponent(sessionId)}`)
+      new Request(`http://internal/get-with-messages?sessionId=${encodeURIComponent(sessionId)}`)
     );
     const sessionData = await statusResponse.json() as InteractiveSessionState | null;
 
@@ -288,12 +301,72 @@ async function handleSendMessage(
       return Response.json({ error: 'message is required' }, { status: 400 });
     }
 
+    // Fetch session state from DO (including conversation history)
+    const sessionDO = (env.INTERACTIVE_SESSIONS as any).idFromName('session-manager');
+    const sessionDOStub = (env.INTERACTIVE_SESSIONS as any).get(sessionDO);
+    const sessionResponse = await sessionDOStub.fetch(
+      new Request(`http://internal/get-with-messages?sessionId=${encodeURIComponent(sessionId)}`)
+    );
+    const sessionData = sessionResponse.ok ? await sessionResponse.json() as InteractiveSessionState | null : null;
+
+    if (!sessionData) {
+      return Response.json({ error: 'Session not found' }, { status: 404 });
+    }
+
+    // Calculate next turn number
+    const nextTurn = (sessionData.currentTurn || 0) + 1;
+
+    // Save user message to DO
+    await sessionDOStub.fetch(new Request('http://internal/add-message', {
+      method: 'POST',
+      body: JSON.stringify({
+        sessionId,
+        role: 'user',
+        content: body.message,
+        turnNumber: nextTurn
+      })
+    }));
+
     // Get container for this session
     const containerName = `interactive-${sessionId}`;
     const id = (env.MY_CONTAINER as any).idFromName(containerName);
     const container = (env.MY_CONTAINER as any).get(id);
 
-    // Forward message to container
+    // Get GitHub token if repository is configured
+    let githubToken: string | undefined;
+    if (sessionData.repository) {
+      const githubConfigId = (env.GITHUB_APP_CONFIG as any).idFromName('github-app-config');
+      const githubConfigDO = (env.GITHUB_APP_CONFIG as any).get(githubConfigId);
+
+      if (env.ENCRYPTION_KEY) {
+        await ensureDOEncryptionKey(githubConfigDO, env.ENCRYPTION_KEY);
+      }
+
+      const tokenResponse = await githubConfigDO.fetch(new Request('http://internal/get-installation-token'));
+      const tokenData = tokenResponse.ok ? await tokenResponse.json() as { token: string | null } : null;
+      githubToken = tokenData?.token || undefined;
+    }
+
+    // Prepare message payload with session state for restoration
+    const messagePayload = {
+      message: body.message,
+      session: {
+        sessionId: sessionData.sessionId,
+        repository: sessionData.repository,
+        messages: sessionData.messages || [],
+        currentTurn: sessionData.currentTurn,
+        options: {
+          maxTurns: 10,
+          permissionMode: 'bypassPermissions' as const
+        }
+      },
+      anthropicApiKey: env.ANTHROPIC_API_KEY,
+      anthropicBaseUrl: 'https://api.z.ai/api/anthropic',
+      apiTimeoutMs: '3000000',
+      githubToken
+    };
+
+    // Forward message to container with session state
     const containerResponse = await containerFetch(
       container,
       new Request('http://internal/message', {
@@ -302,7 +375,7 @@ async function handleSendMessage(
           'Content-Type': 'application/json',
           'X-Session-Id': sessionId
         },
-        body: JSON.stringify({ message: body.message })
+        body: JSON.stringify(messagePayload)
       }),
       { containerName, route: '/message' }
     );
@@ -314,7 +387,66 @@ async function handleSendMessage(
       }, { status: 500 });
     }
 
-    return new Response(containerResponse.body, {
+    // Transform the stream to capture complete event and save assistant message to DO
+    const transformStream = new TransformStream({
+      start(controller) {
+        this.decoder = new TextDecoder();
+        this.lineBuffer = '';
+        this.currentEvent = '';
+      },
+      transform(chunk, controller) {
+        this.lineBuffer += this.decoder.decode(chunk, { stream: true });
+        controller.enqueue(chunk); // Pass through to client
+
+        // Process complete lines
+        const lines = this.lineBuffer.split('\n');
+        this.lineBuffer = lines.pop() || ''; // Keep incomplete line
+
+        for (const line of lines) {
+          if (line.startsWith('event:')) {
+            this.currentEvent = line.substring(6).trim();
+          } else if (line.startsWith('data:') && this.currentEvent === 'complete') {
+            try {
+              const data = JSON.parse(line.substring(5).trim());
+              if (data.lastAssistantMessage) {
+                // Save assistant message to DO asynchronously
+                sessionDOStub.fetch(new Request('http://internal/add-message', {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    sessionId,
+                    role: 'assistant',
+                    content: data.lastAssistantMessage.content,
+                    turnNumber: data.turns || nextTurn
+                  })
+                })).catch(err => {
+                  logWithContext('INTERACTIVE_WORKER', 'Failed to save assistant message', {
+                    error: err instanceof Error ? err.message : String(err)
+                  });
+                });
+
+                // Update session status in DO
+                sessionDOStub.fetch(new Request('http://internal/update', {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    sessionId,
+                    status: 'completed',
+                    currentTurn: data.turns || nextTurn
+                  })
+                })).catch(() => {}); // Fire and forget
+              }
+            } catch (e) {
+              // Ignore JSON parse errors
+            }
+            this.currentEvent = ''; // Reset event
+          }
+        }
+      }
+    });
+
+    // Pipe container response through transform
+    const transformedStream = containerResponse.body!.pipeThrough(transformStream);
+
+    return new Response(transformedStream, {
       headers: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
@@ -333,3 +465,4 @@ async function handleSendMessage(
     }, { status: 500 });
   }
 }
+

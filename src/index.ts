@@ -606,6 +606,25 @@ export class InteractiveSessionDO {
         error_message TEXT
       )
     `);
+
+    // Conversation history table for multi-turn sessions
+    this.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS session_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        turn_number INTEGER NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
+      )
+    `);
+
+    // Index for faster message queries
+    this.storage.sql.exec(`
+      CREATE INDEX IF NOT EXISTS idx_session_messages_session_id
+      ON session_messages(session_id, timestamp)
+    `);
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -650,6 +669,28 @@ export class InteractiveSessionDO {
     if (url.pathname === '/cleanup' && request.method === 'POST') {
       const count = await this.cleanupOldSessions();
       return new Response(JSON.stringify({ deleted: count }));
+    }
+
+    // Get session with messages
+    if (url.pathname === '/get-with-messages' && request.method === 'GET') {
+      const sessionId = url.searchParams.get('sessionId');
+      if (!sessionId) {
+        return new Response('sessionId required', { status: 400 });
+      }
+      const session = await this.getSessionWithMessages(sessionId);
+      return new Response(JSON.stringify(session));
+    }
+
+    // Add message to session
+    if (url.pathname === '/add-message' && request.method === 'POST') {
+      const { sessionId, role, content, turnNumber } = await request.json() as {
+        sessionId: string;
+        role: 'user' | 'assistant';
+        content: string;
+        turnNumber: number;
+      };
+      await this.addMessage(sessionId, role, content, turnNumber);
+      return new Response('OK');
     }
 
     return new Response('Not Found', { status: 404 });
@@ -759,6 +800,45 @@ export class InteractiveSessionDO {
     }
 
     return deleted;
+  }
+
+  // Add a message to a session
+  private async addMessage(sessionId: string, role: 'user' | 'assistant', content: string, turnNumber: number): Promise<void> {
+    const now = Date.now();
+    this.storage.sql.exec(
+      `INSERT INTO session_messages (session_id, role, content, timestamp, turn_number) VALUES (?, ?, ?, ?, ?)`,
+      sessionId,
+      role,
+      content,
+      now,
+      turnNumber
+    );
+  }
+
+  // Get all messages for a session
+  private async getMessages(sessionId: string): Promise<Array<{ role: string; content: string; timestamp: number }>> {
+    const cursor = this.storage.sql.exec(
+      `SELECT role, content, timestamp FROM session_messages WHERE session_id = ? ORDER BY timestamp ASC`,
+      sessionId
+    );
+    const results = cursor.toArray();
+
+    return results.map(row => ({
+      role: row.role as string,
+      content: row.content as string,
+      timestamp: row.timestamp as number
+    }));
+  }
+
+  // Get full session state including messages
+  private async getSessionWithMessages(sessionId: string): Promise<InteractiveSessionState & { messages?: Array<{ role: string; content: string; timestamp: number }> } | null> {
+    const session = await this.getSession(sessionId);
+    if (!session) {
+      return null;
+    }
+
+    const messages = await this.getMessages(sessionId);
+    return { ...session, messages };
   }
 }
 

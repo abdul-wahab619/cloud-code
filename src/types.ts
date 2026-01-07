@@ -86,4 +86,12 @@ export interface InteractiveSessionState {
   lastActivityAt: number;
   completedAt?: number;
   errorMessage?: string;
+  messages?: SessionMessage[];
+}
+
+// Session message for conversation history
+export interface SessionMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
 }
