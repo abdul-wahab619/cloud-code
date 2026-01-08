@@ -1,7 +1,7 @@
 # UX Test Scenario: Multi-Repo Support & PR Review Comments
 
 **Feature:** Multi-repo processing with parallel execution and PR review comments
-**Version:** 3.0.0
+**Version:** 3.1.0
 **Date:** 2026-01-08
 **Tester:** Claude Code QA Team
 **Production:** https://cloud-code.finhub.workers.dev
@@ -9,6 +9,25 @@
 ---
 
 ## Changelog
+
+### v3.1.0 (2026-01-08) - Modal Detachment Fix ✅ DEPLOYED
+
+#### Issue #4: Modal Detachment Error ✅ FIXED
+- **Problem:** "Select repo" dropdown experienced detachment errors when clicking
+- **Root Cause:**
+  - Using absolute positioned View instead of native Modal component
+  - Nested press handlers (Checkbox + row) causing event conflicts
+  - No backdrop press handler to close modal
+  - Abrupt appear/disappear without animations
+- **Fix Applied:**
+  - Replaced absolute positioned View with React Native Modal component
+  - Added fade and scale animations for smooth transitions (200ms fade-in, 150ms fade-out)
+  - Added backdrop press handler to close modal when clicking outside
+  - Removed nested Checkbox component to prevent press handler conflicts
+  - Added shadow/elevation for better visual depth
+  - Added android_ripple for better touch feedback on Android
+
+---
 
 ### v3.0.0 (2026-01-08) - Production Hardening & Test Mode ✅ DEPLOYED
 
