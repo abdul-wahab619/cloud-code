@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Pressable, TextInput, StyleSheet, KeyboardAvoid
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../lib/styles';
 import { useAppStore, RepositoryDetail } from '../../lib/useStore';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
 
 // Message types
 interface ChatMessage {
@@ -579,7 +580,7 @@ function Checkbox({ checked, onToggle }: { checked: boolean; onToggle: () => voi
   );
 }
 
-export default function ChatScreen() {
+function ChatScreenContent() {
   const { repositories, refresh } = useAppStore();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
@@ -1094,5 +1095,13 @@ export default function ChatScreen() {
         )}
       </View>
     </KeyboardAvoidingView>
+  );
+}
+
+export default function ChatScreen() {
+  return (
+    <ErrorBoundary>
+      <ChatScreenContent />
+    </ErrorBoundary>
   );
 }

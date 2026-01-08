@@ -3,6 +3,7 @@ import { View, Text, ScrollView, RefreshControl, StyleSheet } from 'react-native
 import { useAppStore } from '../../lib/useStore';
 import { Card } from '../../components/Card';
 import { StatusDot } from '../../components/StatusDot';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { formatTime } from '../../lib/utils';
 import { colors, commonStyles } from '../../lib/styles';
 import { Ionicons } from '@expo/vector-icons';
@@ -67,7 +68,7 @@ const STATUS_COLORS = {
   failed: '#ef4444',
 } as const;
 
-export default function DashboardScreen() {
+function DashboardScreenContent() {
   const { stats, tasks, sessions, isLoading, refresh } = useAppStore();
 
   useEffect(() => {
@@ -220,5 +221,13 @@ function ActivitySection() {
         </View>
       ))}
     </Card>
+  );
+}
+
+export default function DashboardScreen() {
+  return (
+    <ErrorBoundary>
+      <DashboardScreenContent />
+    </ErrorBoundary>
   );
 }

@@ -1,4 +1,4 @@
-// Cache bust: v2
+// Cache bust: v3
 import { useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
@@ -7,6 +7,7 @@ import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
 import { StatusDot } from '../../components/StatusDot';
 import { Button } from '../../components/Button';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { colors } from '../../lib/styles';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -64,7 +65,7 @@ const styles = StyleSheet.create({
   },
 });
 
-export default function SettingsScreen() {
+function SettingsScreenContent() {
   const { stats, status, isLoading, refresh } = useAppStore();
 
   useEffect(() => {
@@ -168,5 +169,13 @@ export default function SettingsScreen() {
         </Card>
       </View>
     </ScrollView>
+  );
+}
+
+export default function SettingsScreen() {
+  return (
+    <ErrorBoundary>
+      <SettingsScreenContent />
+    </ErrorBoundary>
   );
 }

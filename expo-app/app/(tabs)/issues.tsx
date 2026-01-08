@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { View, Text, ScrollView, RefreshControl, Pressable, StyleSheet } from 'react-native';
 import { useAppStore } from '../../lib/useStore';
 import { Badge } from '../../components/Badge';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { colors } from '../../lib/styles';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -105,7 +106,7 @@ const STATUS_COLORS = {
   closed: colors.mutedForeground,
 } as const;
 
-export default function IssuesScreen() {
+function IssuesScreenContent() {
   const { issues, isLoading, refresh, selectedIssueFilter, setSelectedIssueFilter } = useAppStore();
 
   useEffect(() => {
@@ -215,5 +216,13 @@ export default function IssuesScreen() {
         )}
       </View>
     </ScrollView>
+  );
+}
+
+export default function IssuesScreen() {
+  return (
+    <ErrorBoundary>
+      <IssuesScreenContent />
+    </ErrorBoundary>
   );
 }

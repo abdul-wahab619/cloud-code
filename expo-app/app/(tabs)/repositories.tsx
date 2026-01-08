@@ -5,6 +5,7 @@ import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
 import { StatusDot } from '../../components/StatusDot';
 import { Button } from '../../components/Button';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { colors } from '../../lib/styles';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
@@ -169,7 +170,7 @@ const styles = StyleSheet.create({
   },
 });
 
-export default function RepositoriesScreen() {
+function RepositoriesScreenContent() {
   const { repositories, status, isLoading, refresh } = useAppStore();
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -422,5 +423,13 @@ export default function RepositoriesScreen() {
         ))}
       </View>
     </ScrollView>
+  );
+}
+
+export default function RepositoriesScreen() {
+  return (
+    <ErrorBoundary>
+      <RepositoriesScreenContent />
+    </ErrorBoundary>
   );
 }
