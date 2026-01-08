@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, StyleSheet, KeyboardAvoidingView, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, StyleSheet, KeyboardAvoidingView, ActivityIndicator, Platform, Modal, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../lib/styles';
 import { useAppStore, RepositoryDetail } from '../../lib/useStore';
@@ -417,23 +417,24 @@ const styles = StyleSheet.create({
   },
   // Multi-repo modal styles
   modalOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 1000,
+    padding: 16,
   },
   modalContent: {
-    width: '90%',
+    width: '100%',
     maxWidth: 450,
     maxHeight: '80%',
     backgroundColor: colors.card,
     borderRadius: 12,
     overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -444,10 +445,21 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  modalCloseButton: {
+    padding: 4,
+  },
   modalTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: colors.foreground,
+  },
+  modalBackdrop: {
+    width: '100%',
+    height: '100%',
+  },
+  modalPressable: {
+    width: '100%',
+    height: '100%',
   },
   modalActions: {
     flexDirection: 'row',
@@ -475,6 +487,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  repoCheckboxContainer: {
+    marginRight: 12,
+  },
   repoCheckbox: {
     width: 22,
     height: 22,
@@ -483,7 +498,6 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
   },
   repoCheckboxChecked: {
     backgroundColor: colors.brand,
@@ -568,15 +582,146 @@ const QUICK_ACTIONS = [
   'Refactor...',
 ];
 
-// Checkbox component
-function Checkbox({ checked, onToggle }: { checked: boolean; onToggle: () => void }) {
+// Animated modal component with fade and backdrop handling
+function RepositoryModal({
+  visible,
+  onClose,
+  repositories,
+  selectedRepos,
+  onToggleRepo,
+  onSelectAll,
+  onClearSelection,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  repositories: RepositoryDetail[];
+  selectedRepos: string[];
+  onToggleRepo: (repoName: string) => void;
+  onSelectAll: () => void;
+  onClearSelection: () => void;
+}) {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          tension: 65,
+          friction: 11,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 0.9,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [visible, fadeAnim, scaleAnim]);
+
+  if (!visible) return null;
+
   return (
-    <Pressable
-      onPress={onToggle}
-      style={[styles.repoCheckbox, checked && styles.repoCheckboxChecked]}
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      onRequestClose={onClose}
     >
-      {checked && <Text style={styles.repoCheckboxText}>✓</Text>}
-    </Pressable>
+      <Animated.View style={[styles.modalOverlay, { opacity: fadeAnim }]}>
+        <Pressable style={styles.modalBackdrop} onPress={onClose}>
+          <Animated.View
+            style={[styles.modalContent, { transform: [{ scale: scaleAnim }] }]}
+          >
+            <Pressable style={styles.modalPressable} onPress={(e) => e.stopPropagation()}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Select Repositories</Text>
+                <Pressable onPress={onClose} style={styles.modalCloseButton}>
+                  <Ionicons name="close" size={24} color={colors.foreground} />
+                </Pressable>
+              </View>
+
+              <View style={styles.modalActions}>
+                <Pressable onPress={onSelectAll} style={styles.modalActionButton}>
+                  <Text style={styles.modalActionText}>Select All</Text>
+                </Pressable>
+                <Pressable onPress={onClearSelection} style={styles.modalActionButton}>
+                  <Text style={styles.modalActionText}>Clear</Text>
+                </Pressable>
+              </View>
+
+              <ScrollView style={styles.modalList}>
+                {repositories.length === 0 ? (
+                  <View style={styles.modalEmpty}>
+                    <Ionicons name="git-branch" size={48} color={colors.mutedForeground} />
+                    <Text style={[styles.emptyTitle, { marginTop: 12 }]}>No repositories</Text>
+                    <Text style={styles.emptySubtitle}>
+                      Install the GitHub App to see your repositories here.
+                    </Text>
+                  </View>
+                ) : (
+                  repositories.map((repo) => {
+                    const isSelected = selectedRepos.includes(repo.full_name);
+                    return (
+                      <Pressable
+                        key={repo.full_name}
+                        style={styles.repoItem}
+                        onPress={() => onToggleRepo(repo.full_name)}
+                        android_ripple={{ color: colors.border }}
+                      >
+                        <View style={styles.repoCheckboxContainer}>
+                          <View style={[styles.repoCheckbox, isSelected && styles.repoCheckboxChecked]}>
+                            {isSelected && <Text style={styles.repoCheckboxText}>✓</Text>}
+                          </View>
+                        </View>
+                        <View style={styles.repoItemMain}>
+                          <Ionicons name="logo-github" size={20} color={colors.foreground} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.repoItemName}>{repo.full_name}</Text>
+                            {repo.description && (
+                              <Text style={styles.repoItemDesc} numberOfLines={1}>
+                                {repo.description}
+                              </Text>
+                            )}
+                          </View>
+                          {repo.private && (
+                            <Ionicons name="lock-closed" size={14} color={colors.mutedForeground} />
+                          )}
+                        </View>
+                      </Pressable>
+                    );
+                  })
+                )}
+              </ScrollView>
+
+              {selectedRepos.length > 0 && (
+                <View style={styles.selectedRepos}>
+                  <Text style={styles.selectedRepoText}>{selectedRepos.length} selected</Text>
+                  <Pressable onPress={onClose} style={styles.modalActionButton}>
+                    <Text style={styles.modalActionText}>Done</Text>
+                  </Pressable>
+                </View>
+              )}
+            </Pressable>
+          </Animated.View>
+        </Pressable>
+      </Animated.View>
+    </Modal>
   );
 }
 
@@ -1024,75 +1169,15 @@ function ChatScreenContent() {
         </View>
 
         {/* Multi-repo selection modal */}
-        {showRepoModal && (
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Select Repositories</Text>
-                <Pressable onPress={() => setShowRepoModal(false)}>
-                  <Ionicons name="close" size={24} color={colors.foreground} />
-                </Pressable>
-              </View>
-
-              <View style={styles.modalActions}>
-                <Pressable onPress={selectAllRepos} style={styles.modalActionButton}>
-                  <Text style={styles.modalActionText}>Select All</Text>
-                </Pressable>
-                <Pressable onPress={clearRepoSelection} style={styles.modalActionButton}>
-                  <Text style={styles.modalActionText}>Clear</Text>
-                </Pressable>
-              </View>
-
-              <ScrollView style={styles.modalList}>
-                {repositories.length === 0 ? (
-                  <View style={styles.modalEmpty}>
-                    <Ionicons name="git-branch" size={48} color={colors.mutedForeground} />
-                    <Text style={[styles.emptyTitle, { marginTop: 12 }]}>No repositories</Text>
-                    <Text style={styles.emptySubtitle}>
-                      Install the GitHub App to see your repositories here.
-                    </Text>
-                  </View>
-                ) : (
-                  repositories.map((repo) => {
-                    const isSelected = selectedRepos.includes(repo.full_name);
-                    return (
-                      <Pressable
-                        key={repo.full_name}
-                        style={styles.repoItem}
-                        onPress={() => toggleRepo(repo.full_name)}
-                      >
-                        <Checkbox checked={isSelected} onToggle={() => toggleRepo(repo.full_name)} />
-                        <View style={styles.repoItemMain}>
-                          <Ionicons name="logo-github" size={20} color={colors.foreground} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.repoItemName}>{repo.full_name}</Text>
-                            {repo.description && (
-                              <Text style={styles.repoItemDesc} numberOfLines={1}>
-                                {repo.description}
-                              </Text>
-                            )}
-                          </View>
-                          {repo.private && (
-                            <Ionicons name="lock-closed" size={14} color={colors.mutedForeground} />
-                          )}
-                        </View>
-                      </Pressable>
-                    );
-                  })
-                )}
-              </ScrollView>
-
-              {selectedRepos.length > 0 && (
-                <View style={styles.selectedRepos}>
-                  <Text style={styles.selectedRepoText}>{selectedRepos.length} selected</Text>
-                  <Pressable onPress={() => setShowRepoModal(false)} style={styles.modalActionButton}>
-                    <Text style={styles.modalActionText}>Done</Text>
-                  </Pressable>
-                </View>
-              )}
-            </View>
-          </View>
-        )}
+        <RepositoryModal
+          visible={showRepoModal}
+          onClose={() => setShowRepoModal(false)}
+          repositories={repositories}
+          selectedRepos={selectedRepos}
+          onToggleRepo={toggleRepo}
+          onSelectAll={selectAllRepos}
+          onClearSelection={clearRepoSelection}
+        />
       </View>
     </KeyboardAvoidingView>
   );
