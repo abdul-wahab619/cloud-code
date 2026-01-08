@@ -1,13 +1,57 @@
 # UX Test Scenario: Multi-Repo Support & PR Review Comments
 
 **Feature:** Multi-repo processing with parallel execution and PR review comments
-**Version:** 2.1.0
+**Version:** 3.0.0
 **Date:** 2026-01-08
 **Tester:** Claude Code QA Team
+**Production:** https://cloud-code.finhub.workers.dev
 
 ---
 
 ## Changelog
+
+### v3.0.0 (2026-01-08) - Production Hardening & Test Mode ✅ DEPLOYED
+
+#### Production Features Added
+- **Toast Notification System**
+  - 4 toast types: success, error, warning, info
+  - Slide-in animation from top
+  - Auto-dismiss with progress bar (3-5s based on type)
+  - Swipe-to-dismiss gesture support
+  - Maximum 3 toasts visible simultaneously
+  - Usage: `const { success, error } = useToast();`
+
+- **Error Boundaries**
+  - Each tab wrapped in ErrorBoundary component
+  - Catches render errors gracefully
+  - User-friendly fallback with "Try Again" and "Go Home" buttons
+  - Collapsible technical details section
+  - Prepared for Sentry integration
+
+- **Test Mode** (?test=true)
+  - Enable test mode: Add `?test=true` to any request
+  - Mock data for all API endpoints
+  - 5 fake repositories for UI testing
+  - Mock SSE stream for interactive sessions
+  - No GitHub authentication required
+  - Perfect for UX testing without backend dependencies
+
+#### Production Deployment
+- **URL:** https://cloud-code.finhub.workers.dev
+- **Status:** ✅ Live and operational
+- **Test Mode:** https://cloud-code.finhub.workers.dev/?test=true
+
+#### Visual Verification Checklist Updates
+All items now implemented and verified ✅:
+- [x] Count badge visible next to title (all states)
+- [x] "Add" button has primary styling (green, prominent) - all states
+- [x] "Refresh" button has circular icon - all states
+- [x] Repository cards display correctly
+- [x] Empty state shows clear instructions with TWO buttons
+- [x] Toast notifications appear for user feedback
+- [x] Error boundaries catch and display errors gracefully
+
+---
 
 ### v2.1.0 (2026-01-08) - UI Fixes Applied
 
@@ -49,10 +93,17 @@ This test scenario validates the end-to-end user experience for:
 
 ## Prerequisites
 
+### Option A: Production Testing (Requires GitHub App)
 - ✅ GitHub App "Claude Code on Cloudflare" installed
 - ✅ At least 2 repositories available (for multi-repo testing)
-- ✅ Claude Pipeline app loaded in browser
 - ✅ User authenticated and GitHub connected
+
+### Option B: Test Mode (No Authentication Required) ✅ NEW
+- ✅ App loaded in browser: https://cloud-code.finhub.workers.dev
+- ✅ Enable test mode by appending `?test=true` to URL
+- ✅ Mock data automatically provided
+- ✅ No GitHub App installation needed
+- **Test Mode URL:** https://cloud-code.finhub.workers.dev/?test=true
 
 ---
 
@@ -179,35 +230,83 @@ Processed 3 repositories:
 
 ---
 
+### Scenario 7: Test Mode (No Authentication Required) ✅ NEW
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 7.1 | Navigate to `https://cloud-code.finhub.workers.dev/?test=true` | App loads with test mode enabled |
+| 7.2 | Check Repositories tab | Shows 5 mock repositories (octocat/Hello-World, torvalds/linux, facebook/react, etc.) |
+| 7.3 | Check Sessions tab | Repository selector shows mock repos |
+| 7.4 | Select 2 mock repositories | Checkboxes work; repos are selected |
+| 7.5 | Send test prompt: "List files" | Mock SSE stream returns simulated response |
+| 7.6 | Observe streaming response | Text streams in real-time with status updates |
+| 7.7 | Check for toast notifications | Toast system active for feedback |
+| 7.8 | Verify no authentication prompt | No GitHub login required |
+
+**Test Mode Benefits:**
+- No GitHub App installation needed
+- Immediate testing without setup
+- Consistent mock data for reproducibility
+- Safe for testing error conditions
+- Fast iteration cycle
+
+**Test Mode Mock Data:**
+```
+Repositories: 5 repos (3 public, 1 private, 1 org)
+Stats: 42 processed, 95% success rate
+Sessions: 3 recent mock sessions
+```
+
+---
+
+---
+
 ## Visual Verification Checklist
 
 ### Repository Selector (Sessions Tab)
-- [ ] Dropdown opens smoothly
-- [ ] Checkboxes have clear visual state (checked/unchecked)
-- [ ] "Select All" button styled as secondary button
-- [ ] "Clear" button styled as secondary button
-- [ ] Selected repos appear as chips below input
-- [ ] Chips have X button to deselect individual repos
+- [x] Dropdown opens smoothly
+- [x] Checkboxes have clear visual state (checked/unchecked)
+- [x] "Select All" button styled as secondary button
+- [x] "Clear" button styled as secondary button
+- [x] Selected repos appear as chips below input
+- [x] Chips have X button to deselect individual repos
 
 ### Status Messages
-- [ ] Loading spinner appears during processing
-- [ ] Status messages include repository name
-- [ ] Progress updates show for each repo
-- [ ] Completion is clearly indicated
+- [x] Loading spinner appears during processing
+- [x] Status messages include repository name
+- [x] Progress updates show for each repo
+- [x] Completion is clearly indicated
 
 ### Results Display
-- [ ] Markdown renders correctly
-- [ ] Checkmarks (✓) green-colored
-- [ ] X marks (✗) red-colored
-- [ ] PR links are clickable
-- [ ] Summary section clearly formatted
+- [x] Markdown renders correctly
+- [x] Checkmarks (✓) green-colored
+- [x] X marks (✗) red-colored
+- [x] PR links are clickable
+- [x] Summary section clearly formatted
 
 ### Repositories Tab
-- [ ] Count badge visible next to title
-- [ ] "Add" button has primary styling (green, prominent)
-- [ ] "Refresh" button has circular icon
-- [ ] Repository cards display correctly
-- [ ] Empty state shows clear instructions
+- [x] Count badge visible next to title
+- [x] "Add" button has primary styling (green, prominent)
+- [x] "Refresh" button has circular icon
+- [x] Repository cards display correctly
+- [x] Empty state shows clear instructions
+
+### Toast Notifications ✅ NEW
+- [x] Toast appears from top with slide-in animation
+- [x] Success toasts show green checkmark icon
+- [x] Error toasts show red alert icon
+- [x] Progress bar shows time remaining
+- [x] Swipe-to-dismiss works on mobile
+- [x] X button allows manual dismiss
+- [x] Multiple toasts stack (max 3)
+
+### Error Boundaries ✅ NEW
+- [x] Each tab wrapped in ErrorBoundary
+- [x] Errors show user-friendly message
+- [x] "Try Again" button resets error state
+- [x] "Go Home" button navigates to root
+- [x] Technical details collapsible
+- [x] Error logged to console
 
 ---
 
