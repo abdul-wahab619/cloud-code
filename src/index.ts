@@ -7,6 +7,7 @@ import { handleGitHubStatus } from './handlers/github_status';
 import { handleGitHubWebhook } from './handlers/github_webhook';
 import { handleInteractiveRequest } from './handlers/interactive';
 import { handleDashboardAPI, serveDashboard } from './handlers/dashboard';
+import { handleAddRepositories, handleRepoCallback, handleRefreshRepositories } from './handlers/add_repositories';
 import { handleHealthCheck, handleMetrics, handlePrometheusMetrics, recordRequest, recordContainerStartup, recordContainerShutdown, getRequestCount } from './handlers/health';
 import { logWithContext } from './log';
 import { applyRateLimit, addRateLimitHeaders, checkRateLimit, getClientIdentifier, getCategoryFromPath } from './rate_limit';
@@ -268,6 +269,66 @@ export class GitHubAppConfigDO {
       // Also clear cached installation tokens
       this.storage.sql.exec('DELETE FROM installation_tokens');
       return new Response('OK');
+    }
+
+    if (url.pathname === '/sync-installation' && request.method === 'POST') {
+      logWithContext('DURABLE_OBJECT', 'Syncing installation from GitHub');
+
+      try {
+        // Get the current config
+        const config = await this.getAppConfig();
+        if (!config || !config.installationId) {
+          return new Response(JSON.stringify({ error: 'No installation found' }), { status: 400 });
+        }
+
+        // Get installation token
+        const token = await this.getInstallationToken();
+        if (!token) {
+          return new Response(JSON.stringify({ error: 'Failed to get installation token' }), { status: 500 });
+        }
+
+        // Fetch repositories from GitHub
+        const githubResponse = await fetch('https://api.github.com/installation/repositories', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/vnd.github.v3+json',
+            'User-Agent': 'Worker-GitHub-Integration'
+          }
+        });
+
+        if (!githubResponse.ok) {
+          throw new Error(`GitHub API error: ${githubResponse.status}`);
+        }
+
+        const githubData = await githubResponse.json() as any;
+        const repositories: Repository[] = githubData.repositories.map((repo: any) => ({
+          id: repo.id,
+          name: repo.name,
+          full_name: repo.full_name,
+          private: repo.private
+        }));
+
+        logWithContext('DURABLE_OBJECT', 'Repositories fetched from GitHub', {
+          count: repositories.length
+        });
+
+        // Update the stored config
+        config.repositories = repositories;
+        await this.storeAppConfig(config);
+
+        return new Response(JSON.stringify({
+          success: true,
+          repositories,
+          count: repositories.length
+        }));
+      } catch (error) {
+        logWithContext('DURABLE_OBJECT', 'Error syncing installation', {
+          error: error instanceof Error ? error.message : String(error)
+        });
+        return new Response(JSON.stringify({
+          error: error instanceof Error ? error.message : 'Unknown error'
+        }), { status: 500 });
+      }
     }
 
     logWithContext('DURABLE_OBJECT', 'Unknown endpoint requested', {
@@ -1151,6 +1212,27 @@ export default {
         logWithContext('MAIN_HANDLER', 'Clearing GitHub App configuration');
         routeMatched = true;
         response = await handleClearConfig(env);
+      }
+
+      // Add repositories - redirect to GitHub installation page
+      else if (pathname === '/gh-setup/add-repositories') {
+        logWithContext('MAIN_HANDLER', 'Routing to add repositories');
+        routeMatched = true;
+        response = await handleAddRepositories(request, url.origin, env);
+      }
+
+      // Repository callback - after GitHub installation
+      else if (pathname === '/gh-setup/repo-callback') {
+        logWithContext('MAIN_HANDLER', 'Routing to repo callback');
+        routeMatched = true;
+        response = await handleRepoCallback(request, url, env);
+      }
+
+      // Refresh repositories from GitHub
+      else if (pathname === '/api/repositories/refresh' && request.method === 'POST') {
+        logWithContext('MAIN_HANDLER', 'Refreshing repositories');
+        routeMatched = true;
+        response = await handleRefreshRepositories(request, env);
       }
 
       // Status endpoint to check stored configurations
