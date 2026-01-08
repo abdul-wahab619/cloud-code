@@ -166,6 +166,7 @@ Cloud Code is a **remote-first AI coding platform** that:
 | **Remote Developer** | Works from coffee shops, travel | Laptop not always available | Ship from anywhere |
 | **Hobbyist** | Personal projects, limited hardware | Expensive hardware required | Code without powerful machine |
 | **Team Lead** | Reviews code, manages multiple repos | Needs quick oversight | Monitor progress remotely |
+| **Startup Founder** | Non-technical/semi-technical, needs to ship fast | Can't code, limited budget | Quick fixes without hiring |
 
 ### Secondary Users
 
@@ -184,10 +185,12 @@ Cloud Code is a **remote-first AI coding platform** that:
 - Other (10%)
 
 **By Role:**
-- Full-stack developers (50%)
-- Frontend/backend specialists (30%)
+- Full-stack developers (40%)
+- Frontend/backend specialists (25%)
 - Engineering managers/leads (15%)
+- Startup founders (10%)
 - Students/learners (5%)
+- Hobbyists (5%)
 
 ---
 
