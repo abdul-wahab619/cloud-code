@@ -151,34 +151,40 @@ This test scenario validates the end-to-end user experience for:
 
 ## Competitive Analysis (v3.2.0)
 
-| Product | Where Code Runs | Interface | Multi-repo | GitHub | Setup |
-|---------|-----------------|-----------|------------|--------|-------|
-| **Cloud Code** (this) | ☁️ **Cloudflare Containers** | Web ✅ | ✅ Parallel | ✅ GitHub App | **Zero install** |
-| Claude Code (Anthropic) | 💻 Your machine | CLI | ❌ Single | Manual | Node + CLI + git |
-| **Kilo** | 💻 Your machine | CLI / Web | ❌ Single | Git-based | Local install |
-| **Clio** | 💻 Your machine | CLI | ❌ Single | Git-based | Local install |
-| GitHub Copilot | 💻 Your IDE | IDE Plugin | ❌ | ✅ | VS Code / Jetbrains |
-| Cursor AI | 💻 Your IDE | IDE | ❌ | ✅ | VS Code install |
-| Continue.dev | 💻 Your IDE | IDE | ❌ | Manual | VS Code install |
+| Product | Where Code Runs | Interface | Mobile App | Multi-repo | GitHub | Setup |
+|---------|-----------------|-----------|-------------|------------|--------|-------|
+| **Cloud Code** (this) | ☁️ **Cloudflare Containers** | Web ✅ | ✅ **Expo/React Native** | ✅ Parallel | ✅ GitHub App | **Zero install** |
+| Claude Code (Anthropic) | 💻 Your machine | CLI | ❌ None | ❌ Single | Manual | Node + CLI + git |
+| **Kilo** | 💻 Your machine | CLI / Web | ❌ Desktop-only | ❌ Single | Git-based | Local install |
+| **Clio** | 💻 Your machine | CLI | ❌ None | ❌ Single | Git-based | Local install |
+| GitHub Copilot | 💻 Your IDE | IDE Plugin | ❌ IDE only | ❌ | ✅ | VS Code / Jetbrains |
+| Cursor AI | 💻 Your IDE | IDE | ❌ IDE only | ❌ | ✅ | VS Code install |
+| Continue.dev | 💻 Your IDE | IDE | ❌ IDE only | ❌ | Manual | VS Code install |
 
-### 🚀 Primary USP: Remote-First Execution
+### 🚀 Primary USP: Remote-First + Mobile-First
 
-**Cloud Code is the ONLY Claude Code interface that runs entirely in the cloud.**
+**Cloud Code is the ONLY Claude Code interface with:**
+- ☁️ **Remote execution** (runs in Cloudflare Containers)
+- 📱 **Native mobile app** (Expo/React Native - iOS + Android)
 
 **Why this matters:**
 - **Zero local setup** - No Node.js, no CLI, no git configuration
-- **Works from any device** - iPad, phone, work computer, Chromebook
+- **True mobile support** - Native iOS/Android app, not just "responsive web"
+- **Works from any device** - iPhone, iPad, Android phone, work computer, Chromebook
 - **No "it works on my machine"** - Code executes where it deploys
 - **Enterprise-friendly** - No software installation policy violations
 - **No local resource usage** - No GPU, no RAM, no battery drain
-- **Consistent environment** - Cloudflare Workers environment, every time
+- **Code on-the-go** - Review PRs, fix bugs, add features from your phone
 
 | Requirement | Cloud Code | Others |
 |-------------|-------------|--------|
 | Installation | ❌ None | ✅ Required |
 | Local Node.js | ❌ None | ✅ Required |
 | Local git clone | ❌ None | ✅ Required |
-| Works on iPad | ✅ Yes | ❌ No |
+| Native iOS app | ✅ Yes | ❌ No |
+| Native Android app | ✅ Yes | ❌ No |
+| Works on iPhone | ✅ Native app | ❌ No |
+| Works on iPad | ✅ Native app | ⚠️ Browser only |
 | Works at work | ✅ Yes | ⚠️ Maybe (policy) |
 | Battery drain | ❌ None | ✅ Yes (local compute) |
 
@@ -186,18 +192,18 @@ This test scenario validates the end-to-end user experience for:
 
 **What only Cloud Code has:**
 1. **☁️ Remote execution by default** - Code runs in Cloudflare Containers (PRIMARY USP)
-2. **Multi-repo parallel processing** - Process 2-3 repos simultaneously
-3. **GitHub App native integration** - One-click repo connection
-4. **Custom Claude API endpoints** - Use any Anthropic-compatible API
-5. **Real-time streaming in browser** - Watch Claude work in real-time
-6. **Device-agnostic** - Works on tablets, phones, locked-down devices
+2. **📱 Native mobile app** - Expo/React Native for iOS + Android (SECONDARY USP)
+3. **Multi-repo parallel processing** - Process 2-3 repos simultaneously
+4. **GitHub App native integration** - One-click repo connection
+5. **Custom Claude API endpoints** - Use any Anthropic-compatible API
+6. **Real-time streaming** - Watch Claude work in real-time (web + mobile)
 
 **Competitive advantages:**
-- **vs. Claude Code:** Remote execution + Web UI + Multi-repo (no local install)
-- **vs. Kilo:** Cloud execution + Parallel + No local setup
-- **vs. Clio:** Cloud execution + GitHub App + Web UI
-- **vs. Copilot:** Remote + Claude (better reasoning) + Multi-repo
-- **vs. Cursor:** Cloud-based + No IDE required + Parallel
+- **vs. Claude Code:** Remote + Mobile app + Web UI + Multi-repo
+- **vs. Kilo:** Cloud execution + Native mobile + Parallel
+- **vs. Clio:** Cloud execution + GitHub App + Mobile app
+- **vs. Copilot:** Remote + Mobile + Claude (better reasoning)
+- **vs. Cursor:** Cloud-based + Mobile app + No IDE
 
 ---
 
