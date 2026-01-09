@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, StyleSheet, KeyboardAvoidingView, ActivityIndicator, Platform, Modal, Animated, Linking } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, StyleSheet, KeyboardAvoidingView, ActivityIndicator, Platform, Modal, Animated, Linking, Alert } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../lib/styles';
 import { useAppStore, RepositoryDetail } from '../../lib/useStore';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { ErrorIds } from '../../constants/errorIds';
+import { SessionHistoryModal, SessionListItem } from '../../components/SessionHistoryModal';
 
 // Request handling constants
 const REQUEST_TIMEOUT_MS = 30000; // 30 second timeout
@@ -554,6 +555,9 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   newChatButton: {
+    padding: 4,
+  },
+  historyButton: {
     padding: 4,
   },
   repoSelector: {
@@ -1120,6 +1124,8 @@ function ChatScreenContent() {
   const [showRepoModal, setShowRepoModal] = useState(false);
   const [lastPrompt, setLastPrompt] = useState<string>('');
   const [canCancel, setCanCancel] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [sessionHistory, setSessionHistory] = useState<SessionListItem[]>([]);
   const scrollViewRef = useRef<ScrollView>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -1234,6 +1240,43 @@ function ChatScreenContent() {
 
   const removeRepo = useCallback((repoName: string) => {
     setSelectedRepos(prev => prev.filter(r => r !== repoName));
+  }, []);
+
+  // Session history handlers
+  const openHistoryModal = useCallback(() => {
+    // Refresh history when opening modal
+    const history = getSessionHistory();
+    setSessionHistory(history);
+    setShowHistoryModal(true);
+  }, []);
+
+  const handleLoadSession = useCallback((sessionId: string) => {
+    const session = loadSessionFromHistory(sessionId);
+    if (!session) {
+      logError(ErrorIds.SESSION_LOAD_FAILED, new Error('Session not found or corrupted'), { sessionId });
+      Alert.alert('Error', 'Could not load this session. It may have been corrupted or deleted.');
+      return;
+    }
+
+    // Load the session
+    setMessages(session.messages as ChatMessage[]);
+    setSessionId(session.sessionId);
+    setSelectedRepos(session.selectedRepos);
+    currentSessionId = session.id; // Restore the persistent session ID
+    setShowHistoryModal(false);
+  }, []);
+
+  const handleDeleteSession = useCallback((sessionId: string) => {
+    const success = deleteSessionFromHistory(sessionId);
+    if (!success) {
+      logError(ErrorIds.SESSION_DELETE_FAILED, new Error('Failed to delete session'), { sessionId });
+      Alert.alert('Error', 'Could not delete this session. Please try again.');
+      return;
+    }
+
+    // Refresh the history list
+    const updatedHistory = getSessionHistory();
+    setSessionHistory(updatedHistory);
   }, []);
 
   const sendMessage = async (promptText?: string) => {
@@ -1581,6 +1624,15 @@ function ChatScreenContent() {
       <View style={styles.flex1} accessibilityRole="region" accessibilityLabel="Chat screen">
         <View style={styles.header} accessibilityRole="header">
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Pressable
+              onPress={openHistoryModal}
+              style={styles.historyButton}
+              accessibilityLabel="Session history"
+              accessibilityHint={`Open session history${sessionHistory.length > 0 ? ` with ${sessionHistory.length} sessions` : ''}`}
+              accessibilityRole="button"
+            >
+              <Ionicons name="time-outline" size={24} color={colors.brand} />
+            </Pressable>
             {messages.length > 0 && (
               <Pressable
                 onPress={startNewChat}
@@ -1762,6 +1814,15 @@ function ChatScreenContent() {
           onToggleRepo={toggleRepo}
           onSelectAll={selectAllRepos}
           onClearSelection={clearRepoSelection}
+        />
+
+        {/* Session history modal */}
+        <SessionHistoryModal
+          visible={showHistoryModal}
+          onClose={() => setShowHistoryModal(false)}
+          onLoadSession={handleLoadSession}
+          onDeleteSession={handleDeleteSession}
+          sessions={sessionHistory}
         />
       </View>
     </KeyboardAvoidingView>
