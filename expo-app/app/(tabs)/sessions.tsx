@@ -1146,7 +1146,7 @@ function ChatScreenContent() {
   const [sessionHistory, setSessionHistory] = useState<SessionListItem[]>([]);
   const scrollViewRef = useRef<ScrollView>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<number | null>(null);
 
   // Calculate total tokens used in the session (excludes system messages)
   // Note: This is an approximation using character estimation, not actual API token usage
@@ -1699,7 +1699,7 @@ function ChatScreenContent() {
 
   return (
     <KeyboardAvoidingView style={styles.flex1} behavior="padding" keyboardVerticalOffset={0}>
-      <View style={styles.flex1} accessibilityRole="region" accessibilityLabel="Chat screen">
+      <View style={styles.flex1} accessibilityLabel="Chat screen">
         <View style={styles.header} accessibilityRole="header">
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Pressable
@@ -1780,7 +1780,7 @@ function ChatScreenContent() {
         <OfflineBanner onSyncPress={() => setShowOfflineQueueModal(true)} />
 
         {messages.length === 0 ? (
-          <View style={styles.emptyState} accessibilityRole="region" accessibilityLabel="Empty chat state">
+          <View style={styles.emptyState} accessibilityLabel="Empty chat state">
             <Ionicons name="sparkles-outline" size={48} color={colors.mutedForeground} />
             <Text style={styles.emptyTitle}>Start a conversation</Text>
             <Text style={styles.emptySubtitle}>
@@ -1811,7 +1811,6 @@ function ChatScreenContent() {
             style={styles.chatContainer}
             contentContainerStyle={styles.messagesList}
             accessibilityLabel="Chat messages"
-            accessibilityRole="region"
           >
             {messages.map((message, index) => (
               <View
@@ -1831,7 +1830,6 @@ function ChatScreenContent() {
               <View
                 style={styles.messageRow}
                 accessibilityLabel="Claude is typing"
-                accessibilityRole="status"
               >
                 <View style={[styles.messageBubble, styles.assistantBubble]}>
                   <View style={styles.typingIndicator}>
@@ -1908,17 +1906,19 @@ function ChatScreenContent() {
         />
 
         {/* Session replay modal */}
-        <Modal
-          visible={showSessionReplay}
-          animationType="slide"
-          presentationStyle="pageSheet"
-          onRequestClose={() => setShowSessionReplay(false)}
-        >
-          <SessionReplay
-            session={replaySession}
-            onClose={() => setShowSessionReplay(false)}
-          />
-        </Modal>
+        {replaySession && (
+          <Modal
+            visible={showSessionReplay}
+            animationType="slide"
+            presentationStyle="pageSheet"
+            onRequestClose={() => setShowSessionReplay(false)}
+          >
+            <SessionReplay
+              session={replaySession}
+              onClose={() => setShowSessionReplay(false)}
+            />
+          </Modal>
+        )}
 
         {/* Offline queue modal */}
         <Modal

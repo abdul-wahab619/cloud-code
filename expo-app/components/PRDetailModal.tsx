@@ -85,7 +85,7 @@ export function PRDetailModal({
   };
 
   const handleMerge = async () => {
-    haptics('medium');
+    haptics.modalOpen();
     // Would call merge API
     Alert.alert('Merge', 'Merge functionality coming soon');
   };

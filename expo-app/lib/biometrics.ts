@@ -103,13 +103,13 @@ export async function authenticate(config: BiometricConfig = {}): Promise<{
     });
 
     if (result.success) {
-      haptics('success');
+      haptics.success();
     }
 
     return { success: result.success };
   } catch (error) {
     const errorMessage = getErrorMessage(error);
-    haptics('error');
+    haptics.error();
     return { success: false, error: errorMessage };
   }
 }

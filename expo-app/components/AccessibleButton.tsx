@@ -242,7 +242,28 @@ export const AccessibleButton = forwardRef<any, AccessibleButtonProps>(
 
       // Trigger haptic feedback
       if (haptic !== 'none') {
-        haptics[haptic]();
+        // Map haptic string to actual haptics method
+        switch (haptic) {
+          case 'light':
+            haptics.buttonPress();
+            break;
+          case 'medium':
+            haptics.modalOpen();
+            break;
+          case 'heavy':
+            // No direct equivalent, use error
+            haptics.error();
+            break;
+          case 'success':
+            haptics.success();
+            break;
+          case 'warning':
+            haptics.warning();
+            break;
+          case 'error':
+            haptics.error();
+            break;
+        }
       }
 
       // Log action in test mode
@@ -305,7 +326,7 @@ export const AccessibleButton = forwardRef<any, AccessibleButtonProps>(
         onAccessibilityTap={onAccessibilityTap ? handleAccessibilityTap : undefined}
         accessibilityLiveRegion="polite"
         accessible={true}
-        style={({ pressed, focused }: PressableStateCallbackType) => [
+        style={({ pressed }: PressableStateCallbackType) => [
           styles.button,
           sizeStyle,
           variantStyle.backgroundColor && { backgroundColor: variantStyle.backgroundColor },
@@ -317,8 +338,7 @@ export const AccessibleButton = forwardRef<any, AccessibleButtonProps>(
           {
             opacity: (disabled || loading) ? 0.5 : pressed ? 0.8 : 1,
           },
-          // Web focus ring
-          focused && styles.focusRing,
+          // Note: Web focus ring would need custom implementation using useFocus hook
           style,
         ]}
       >

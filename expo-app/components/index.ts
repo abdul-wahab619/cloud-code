@@ -54,16 +54,11 @@ export type {
 } from '../lib/accessibility';
 
 // Performance utilities
-export { perf as performance } from '../lib/performance';
+export { default as performance } from '../lib/performance';
 export type {
-  ImageCacheStats,
-  MemoComparator,
+  ImagePreloadResult,
   LazyComponentResult,
-  LazyDataResult,
-  AnimationQuality,
   PerformanceMetric,
-  MetricStats,
-  PerformanceTimer,
 } from '../lib/performance';
 
 // Session components
@@ -94,20 +89,14 @@ export type { ToggleProps } from './Toggle';
 
 // Issue management
 export { CreateIssueModal } from './CreateIssueModal';
-export type { CreateIssueModalProps } from './CreateIssueModal';
 export { PRDetailModal } from './PRDetailModal';
-export type { PRDetailModalProps, PRDetail } from './PRDetailModal';
+export type { PRDetail } from './PRDetailModal';
 
 // Charts
 export { StatsCard } from './StatsCard';
-export type { StatsCardProps, StatDetail } from './StatsCard';
 export { SuccessChart } from './SuccessChart';
-export type { SuccessChartProps } from './SuccessChart';
 export { ActivityChart } from './ActivityChart';
-export type { ActivityChartProps, ActivityDataPoint } from './ActivityChart';
 
 // Gestures
 export { PullToRefresh } from './PullToRefresh';
-export type { PullToRefreshProps } from './PullToRefresh';
 export { SwipeableItem } from './SwipeableItem';
-export type { SwipeableItemProps, SwipeAction } from './SwipeableItem';

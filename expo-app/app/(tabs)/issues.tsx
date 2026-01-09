@@ -169,7 +169,7 @@ function IssuesScreenContent() {
   });
 
   const handleCreateIssue = useCallback(() => {
-    haptics('medium');
+    haptics.modalOpen();
     setCreateModalVisible(true);
   }, []);
 
@@ -183,12 +183,12 @@ function IssuesScreenContent() {
   }, [refresh]);
 
   const handleViewPR = useCallback((prNumber: number, repository: string) => {
-    haptics('light');
+    haptics.buttonPress();
     setSelectedPR({ number: prNumber, repository });
   }, []);
 
   const handleSwipeAction = useCallback((issue: any, action: string) => {
-    haptics('medium');
+    haptics.modalOpen();
     if (action === 'view') {
       // Navigate to issue details or PR details
       handleViewPR(issue.number, issue.repository || '');
@@ -203,7 +203,7 @@ function IssuesScreenContent() {
             style: 'destructive',
             onPress: () => {
               // Handle delete logic
-              haptics('heavy');
+              haptics.error();
             },
           },
         ]
@@ -288,7 +288,7 @@ function IssuesScreenContent() {
                       onPress: () => handleSwipeAction(issue, 'delete'),
                     },
                   ]}
-                  onSwipeStart={() => haptics('light')}
+                  onSwipeStart={() => haptics.buttonPress()}
                 >
                   <View style={styles.issueCard}>
                     <View

@@ -36,7 +36,7 @@ export function StatsCard({
 
   const handlePress = () => {
     if (details && details.length > 0) {
-      haptics('light');
+      haptics.buttonPress();
       setShowDetails(true);
     }
   };

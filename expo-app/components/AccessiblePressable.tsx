@@ -388,10 +388,7 @@ export const AccessiblePressable = forwardRef<
       baseStyle.push(styleState(state));
     }
 
-    // Add focus ring for web when focused
-    if (state.focused) {
-      baseStyle.push(styles.focusRing);
-    }
+    // Note: Focus ring would need custom implementation using useFocus hook
 
     // Add opacity for disabled/pressed
     if (disabled) {

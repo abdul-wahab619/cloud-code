@@ -53,7 +53,7 @@ export function CreateIssueModal({
     }
 
     setLoading(true);
-    haptics('medium');
+    haptics.modalOpen();
 
     try {
       const isTestMode = typeof window !== 'undefined' &&
@@ -75,7 +75,7 @@ export function CreateIssueModal({
       }
 
       const result = await response.json();
-      haptics('success');
+      haptics.success();
 
       // Reset form
       setTitle('');
@@ -89,7 +89,7 @@ export function CreateIssueModal({
 
       Alert.alert('Success', `Issue #${result.number} created successfully!`);
     } catch (error) {
-      haptics('error');
+      haptics.error();
       Alert.alert('Error', 'Failed to create issue. Please try again.');
     } finally {
       setLoading(false);
@@ -168,7 +168,7 @@ export function CreateIssueModal({
                     key={template}
                     style={styles.templateButton}
                     onPress={() => {
-                      haptics('light');
+                      haptics.buttonPress();
                       setTitle(`${template}: `);
                     }}
                   >

@@ -74,7 +74,27 @@ export function Button({
   const handlePress = () => {
     if (!disabled && !loading) {
       if (haptic !== 'none') {
-        haptics[haptic]();
+        // Map haptic string to actual haptics method
+        switch (haptic) {
+          case 'light':
+            haptics.buttonPress();
+            break;
+          case 'medium':
+            haptics.modalOpen();
+            break;
+          case 'heavy':
+            haptics.error();
+            break;
+          case 'success':
+            haptics.success();
+            break;
+          case 'warning':
+            haptics.warning();
+            break;
+          case 'error':
+            haptics.error();
+            break;
+        }
       }
       onPress?.();
     }

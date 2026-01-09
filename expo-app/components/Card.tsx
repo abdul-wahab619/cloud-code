@@ -105,7 +105,15 @@ export function Card({
     ? {
         onPress: () => {
           if (!disabled && haptic !== 'none') {
-            haptics[haptic]();
+            // Map haptic string to actual haptics method
+            switch (haptic) {
+              case 'light':
+                haptics.buttonPress();
+                break;
+              case 'medium':
+                haptics.modalOpen();
+                break;
+            }
           }
           onPress();
         },
@@ -114,7 +122,7 @@ export function Card({
           cardStyle,
           style,
           styles.pressable,
-          { opacity: pressed ? 0.8 : 1, opacity: disabled ? 0.5 : 1 },
+          { opacity: (disabled ? 0.5 : (pressed ? 0.8 : 1)) },
         ],
       }
     : { style: [cardStyle, style] };
