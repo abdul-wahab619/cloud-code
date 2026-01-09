@@ -10,6 +10,7 @@ import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { formatTime } from '../../lib/utils';
 import { colors, commonStyles } from '../../lib/styles';
 import { Ionicons } from '@expo/vector-icons';
+import { useScreenTracking } from '../../contexts/AnalyticsContext';
 
 const styles = StyleSheet.create({
   flex1: { flex: 1, backgroundColor: colors.background },
@@ -340,6 +341,9 @@ function ActivitySection() {
 }
 
 export default function DashboardScreen() {
+  // Track screen views for analytics
+  useScreenTracking('Dashboard');
+
   return (
     <ErrorBoundary>
       <DashboardScreenContent />

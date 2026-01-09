@@ -248,6 +248,35 @@ class NotificationServiceClass {
     }
   }
 
+  /**
+   * Schedule a local notification with custom data
+   */
+  async scheduleLocalNotification(
+    title: string,
+    body: string,
+    data?: Record<string, unknown>
+  ): Promise<void> {
+    if (!this.preferences.enabled) return;
+
+    if (this.preferences.quietHoursEnabled && this.isQuietHours()) {
+      console.log('[NotificationService] Quiet hours - skipping notification');
+      return;
+    }
+
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title,
+          body,
+          data: data || {},
+        },
+        trigger: null, // Show immediately
+      });
+    } catch (error) {
+      console.error('[NotificationService] Schedule notification error:', error);
+    }
+  }
+
   // ========================================================================
   // Notification Templates
   // ========================================================================
@@ -328,7 +357,7 @@ class NotificationServiceClass {
   // Preferences Management
   // ========================================================================
 
-  async updatePreferences(updates: Partial<NotificationPreferences>): Promise<void> {
+  async updatePreferences(updates: Partial<NotificationPreferences>): Promise<NotificationPreferences> {
     this.preferences = { ...this.preferences, ...updates };
 
     // Enable/disable notifications based on preference
@@ -337,6 +366,7 @@ class NotificationServiceClass {
     }
 
     await this.savePreferences();
+    return this.getPreferences();
   }
 
   getPreferences(): NotificationPreferences {

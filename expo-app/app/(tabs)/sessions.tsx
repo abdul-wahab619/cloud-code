@@ -10,6 +10,9 @@ import { SessionHistoryModal } from '../../components/SessionHistoryModal';
 import { OfflineBanner } from '../../components/OfflineBanner';
 import { OfflineQueue } from '../../components/OfflineQueue';
 import { SessionReplay, SessionData, SessionEvent } from '../../components/SessionReplay';
+import { useScreenTracking } from '../../contexts/AnalyticsContext';
+import { syncManager } from '../../lib/syncManager';
+import { offlineQueue } from '../../lib/offlineStorage';
 
 // Request handling constants
 const REQUEST_TIMEOUT_MS = 30000; // 30 second timeout
@@ -1144,9 +1147,18 @@ function ChatScreenContent() {
   const [showSessionReplay, setShowSessionReplay] = useState(false);
   const [replaySession, setReplaySession] = useState<SessionData | null>(null);
   const [sessionHistory, setSessionHistory] = useState<SessionListItem[]>([]);
+  const [isOffline, setIsOffline] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const timeoutRef = useRef<number | null>(null);
+
+  // Track connection status for offline mode
+  useEffect(() => {
+    const unsubscribe = syncManager.onConnectionChange((online) => {
+      setIsOffline(!online);
+    });
+    return unsubscribe;
+  }, []);
 
   // Calculate total tokens used in the session (excludes system messages)
   // Note: This is an approximation using character estimation, not actual API token usage
@@ -1260,13 +1272,25 @@ function ChatScreenContent() {
     setSelectedRepos(prev => prev.filter(r => r !== repoName));
   }, []);
 
+  // Auth state
+  const { isAuthenticated } = useAppStore();
+
   // Session history handlers
   const openHistoryModal = useCallback(() => {
+    // Require authentication for session history
+    if (!isAuthenticated) {
+      Alert.alert(
+        'Authentication Required',
+        'Please sign in to access your session history.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
     // Refresh history when opening modal
     const history = getSessionHistory();
     setSessionHistory(history);
     setShowHistoryModal(true);
-  }, []);
+  }, [isAuthenticated]);
 
   const handleLoadSession = useCallback((sessionId: string) => {
     const session = loadSessionFromHistory(sessionId);
@@ -1360,6 +1384,38 @@ function ChatScreenContent() {
   const sendMessage = async (promptText?: string) => {
     const text = (promptText || inputText).trim();
     if (!text || isProcessing) return;
+
+    // Check offline status - queue message if offline
+    if (isOffline) {
+      // Queue the message for offline sync
+      await offlineQueue.add('session_message', {
+        sessionId,
+        message: text,
+        selectedRepos,
+        timestamp: Date.now(),
+      });
+
+      // Add user message to UI
+      const userMessage: ChatMessage = {
+        id: Date.now().toString(),
+        role: 'user',
+        content: text,
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => [...prev, userMessage]);
+      setInputText('');
+
+      // Add pending indicator
+      const pendingMessage: ChatMessage = {
+        id: `pending-${Date.now()}`,
+        role: 'system',
+        content: 'Message queued. Will send when connection is restored.',
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => [...prev, pendingMessage]);
+
+      return;
+    }
 
     // Cancel any existing request
     if (abortControllerRef.current) {
@@ -1937,6 +1993,9 @@ function ChatScreenContent() {
 }
 
 export default function ChatScreen() {
+  // Track screen views for analytics
+  useScreenTracking('Sessions');
+
   return (
     <ErrorBoundary>
       <ChatScreenContent />

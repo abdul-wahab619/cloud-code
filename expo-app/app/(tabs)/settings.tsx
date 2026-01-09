@@ -36,6 +36,7 @@ import {
 } from '../../lib/biometrics';
 import { useToast } from '../../lib/useToast';
 import { AnalyticsService } from '../../services/AnalyticsService';
+import { useScreenTracking, useAnalytics } from '../../contexts/AnalyticsContext';
 
 // App version - should be updated with releases
 const APP_VERSION = '2.1.0';
@@ -805,6 +806,9 @@ function SettingsScreenContent() {
 }
 
 export default function SettingsScreen() {
+  // Track screen views for analytics
+  useScreenTracking('Settings');
+
   return (
     <ErrorBoundary>
       <SettingsScreenContent />
