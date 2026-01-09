@@ -159,7 +159,7 @@ export function PRDetailModal({
           </View>
 
           {/* Content */}
-          <ScrollView style={styles.body}>
+          <ScrollView style={styles.bodyPadding}>
             {loading ? (
               <View style={styles.centered}>
                 <ActivityIndicator size="large" color={colors.primary} />
@@ -322,7 +322,7 @@ const styles = StyleSheet.create({
   closeButton: {
     padding: spacing[1],
   },
-  body: {
+  bodyPadding: {
     padding: spacing[4],
     gap: spacing[4],
   },

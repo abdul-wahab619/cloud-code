@@ -11,7 +11,7 @@ import {
   Animated,
   Dimensions,
   Platform,
-  GestureResponderGestureState,
+  PanResponderGestureState,
 } from 'react-native';
 import { colors } from '../lib/tokens/colors';
 import { ActivityIndicator } from 'react-native';

@@ -10,7 +10,7 @@ import {
   PanResponder,
   Animated,
   Dimensions,
-  GestureResponderGestureState,
+  PanResponderGestureState,
 } from 'react-native';
 import { colors } from '../lib/tokens/colors';
 import { triggerHaptic } from '../lib/haptics';
