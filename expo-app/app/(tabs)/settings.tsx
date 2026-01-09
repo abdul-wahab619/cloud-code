@@ -1,4 +1,4 @@
-// Cache bust: v6
+// Cache bust: v7
 import { useEffect, useState, useCallback } from 'react';
 import {
   View,
@@ -20,6 +20,7 @@ import { Toggle } from '../../components/Toggle';
 import { SettingsList } from '../../components/SettingsList';
 import { AccountSettings } from '../../components/AccountSettings';
 import { AuthModal, AuthMode } from '../../components/AuthModal';
+import { NotificationSettings } from '../../components/NotificationSettings';
 import { colors } from '../../lib/styles';
 import { spacing } from '../../lib/tokens/spacing';
 import { haptics } from '../../lib/haptics';
@@ -726,6 +727,9 @@ function SettingsScreenContent() {
             </>
           )}
         </View>
+
+        {/* Notifications */}
+        <NotificationSettings />
 
         {/* Account Information */}
         <AccountSettings onNavigateToAuth={() => handleOpenAuth('login')} />
