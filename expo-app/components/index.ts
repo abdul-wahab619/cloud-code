@@ -80,7 +80,6 @@ export {
   SessionContent,
   CollapsibleSection,
   FileChangesList,
-  MarkdownText,
 } from './SessionReplay';
 export type {
   SessionTimelineProps,

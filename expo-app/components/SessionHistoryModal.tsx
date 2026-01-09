@@ -666,8 +666,8 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.semibold,
   },
   closeButton: {
-    width: iconSize.comfortable,
-    height: iconSize.comfortable,
+    width: iconSize.xl,
+    height: iconSize.xl,
     borderRadius: borderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
@@ -681,7 +681,7 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing[4],
     marginTop: spacing[4],
     paddingHorizontal: spacing[3],
-    height: iconSize.comfortable,
+    height: iconSize.xl,
     backgroundColor: colors.muted,
     borderRadius: borderRadius.xl,
     borderWidth: 1,
@@ -781,7 +781,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[3],
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    minHeight: iconSize.comfortable,
+    minHeight: iconSize.xl,
   },
   sessionItemPressed: {
     backgroundColor: colors.muted,

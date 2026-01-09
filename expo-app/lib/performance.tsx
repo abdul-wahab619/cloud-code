@@ -700,7 +700,7 @@ export function useAsyncCleanup() {
   }, []);
 
   return useCallback(
-    <T>(promise: Promise<T>): Promise<T | null> => {
+    <T,>(promise: Promise<T>): Promise<T | null> => {
       return promise.then(
         (value) => (isMountedRef.current ? value : null),
         (error) => (isMountedRef.current ? Promise.reject(error) : null)

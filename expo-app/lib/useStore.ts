@@ -15,7 +15,7 @@ import type {
 import { api } from './api';
 import { cacheStorage, sessionDraftStorage, settingsStorage, offlineState } from './offlineStorage';
 import { sessionPersistence } from './sessionPersistence';
-import { syncManager } from './syncManager';
+import { syncManager, type SyncResult } from './syncManager';
 import { userService } from './userService';
 
 // Re-export types for convenience
@@ -81,7 +81,7 @@ interface AppState {
 
   // Offline actions
   setOfflineMode: (offline: boolean) => void;
-  sync: () => Promise<boolean>;
+  sync: () => Promise<SyncResult>;
 
   // Selected repositories
   setSelectedRepositories: (repos: string[]) => void;
@@ -185,7 +185,7 @@ export const useAppStore = create<AppState>((set, get) => {
     sync: async () => {
       const result = await syncManager.forceSync();
       set({ isSyncing: false });
-      return result.success;
+      return result;
     },
 
     setSelectedRepositories: async (repos) => {

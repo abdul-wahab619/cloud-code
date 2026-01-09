@@ -38,7 +38,7 @@ export interface NotificationSettingsState {
 /**
  * Permission status
  */
-interface PermissionStatus {
+interface NotificationPermissionStatus {
   granted: boolean;
   canAskAgain: boolean;
   status: 'granted' | 'denied' | 'not-determined';
@@ -91,7 +91,7 @@ export function NotificationSettings({
     ...DEFAULT_SETTINGS,
     ...initialSettings,
   });
-  const [permissionStatus, setPermissionStatus] = useState<PermissionStatus>({
+  const [permissionStatus, setNotificationPermissionStatus] = useState<NotificationPermissionStatus>({
     granted: false,
     canAskAgain: true,
     status: 'not-determined',
@@ -121,10 +121,10 @@ export function NotificationSettings({
 
       // Check notification permissions
       const { status, canAskAgain } = await Notifications.getPermissionsAsync();
-      setPermissionStatus({
+      setNotificationPermissionStatus({
         granted: status === 'granted',
         canAskAgain,
-        status,
+        status: status as 'granted' | 'denied' | 'not-determined',
       });
     } catch (error) {
       console.error('Failed to load notification settings:', error);
@@ -163,14 +163,14 @@ export function NotificationSettings({
 
   // Request notification permissions
   const requestPermissions = async () => {
-    haptics.medium();
+    haptics.modalOpen();
 
     try {
       const { status, canAskAgain } = await Notifications.requestPermissionsAsync();
-      setPermissionStatus({
+      setNotificationPermissionStatus({
         granted: status === 'granted',
         canAskAgain,
-        status,
+        status: status as 'granted' | 'denied' | 'not-determined',
       });
 
       if (status === 'granted') {

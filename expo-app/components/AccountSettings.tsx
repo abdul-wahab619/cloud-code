@@ -129,7 +129,7 @@ export function AccountSettings({ onNavigateToAuth }: AccountSettingsProps) {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Save',
-          onPress: async (name) => {
+          onPress: async (name: string | undefined) => {
             if (name && name.trim()) {
               await updateUser({ name: name.trim() });
             }

@@ -6,7 +6,7 @@ import { colors } from '../../lib/styles';
 import { useAppStore, RepositoryDetail } from '../../lib/useStore';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { ErrorIds } from '../../constants/errorIds';
-import { SessionHistoryModal, SessionListItem } from '../../components/SessionHistoryModal';
+import { SessionHistoryModal } from '../../components/SessionHistoryModal';
 import { OfflineBanner } from '../../components/OfflineBanner';
 import { OfflineQueue } from '../../components/OfflineQueue';
 import { SessionReplay, SessionData, SessionEvent } from '../../components/SessionReplay';
@@ -202,6 +202,18 @@ const loadCurrentSession = (): ChatSession | null => {
 const clearCurrentSession = () => {
   currentSessionId = null; // Reset persistent session ID
   storage.removeItem(CURRENT_SESSION_KEY);
+};
+
+const getFullChatSession = (sessionId: string): ChatSession | null => {
+  const historyData = storage.getItem(SESSION_STORAGE_KEY);
+  if (!historyData) return null;
+
+  try {
+    const sessions: ChatSession[] = JSON.parse(historyData);
+    return sessions.find(s => s.id === sessionId) ?? null;
+  } catch {
+    return null;
+  }
 };
 
 const getSessionHistory = (): SessionListItem[] => {
@@ -1286,8 +1298,7 @@ function ChatScreenContent() {
   }, []);
 
   const handleReplaySession = useCallback((sessionId: string) => {
-    const history = getSessionHistory();
-    const chatSession = history.find(s => s.id === sessionId);
+    const chatSession = getFullChatSession(sessionId);
     if (!chatSession) {
       logError(ErrorIds.SESSION_LOAD_FAILED, new Error('Session not found'), { sessionId });
       Alert.alert('Error', 'Could not find this session.');
