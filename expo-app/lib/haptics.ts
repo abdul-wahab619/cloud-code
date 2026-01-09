@@ -54,7 +54,7 @@ export const triggerHaptic = async (type: HapticType = 'light'): Promise<void> =
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         break;
       case 'selection':
-        await Haptics.selectionChangedAsync();
+        await Haptics.selectionAsync();
         break;
       case 'impact':
         await Haptics.impactAsync();

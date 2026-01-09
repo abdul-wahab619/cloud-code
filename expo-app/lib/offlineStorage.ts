@@ -129,7 +129,7 @@ class StorageManager {
    */
   async keys(): Promise<string[]> {
     try {
-      return await AsyncStorage.getAllKeys();
+      return await AsyncStorage.getAllKeys() as string[];
     } catch (error) {
       console.error('Storage keys error:', error);
       return [];

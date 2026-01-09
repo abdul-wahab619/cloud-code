@@ -50,7 +50,7 @@ export function AnalyticsProvider({ children, autoInitialize = true }: Analytics
   }, [autoInitialize, analytics]);
 
   const contextValue: AnalyticsContextValue = {
-    track: analytics.track,
+    track: analytics.track as (eventType: string, data?: Record<string, unknown>) => void,
     trackScreen: analytics.trackScreen,
     trackButton: analytics.trackButton,
     trackSessionCreated: analytics.trackSessionCreated,
