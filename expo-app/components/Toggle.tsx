@@ -111,7 +111,7 @@ export function Toggle({
       disabled={disabled}
       style={({ pressed }) => [
         styles.pressable,
-        { minHeight: touchTarget.min },
+        { minHeight: touchTarget.min, opacity: pressed && !disabled ? 0.8 : 1 },
       ]}
       testID={testID}
       accessibilityRole="switch"
@@ -126,7 +126,7 @@ export function Toggle({
             width: sizeConfig.width,
             height: sizeConfig.height,
             backgroundColor: value ? trackColor : colors.muted,
-            opacity: disabled ? 0.5 : pressed ? 0.8 : 1,
+            opacity: disabled ? 0.5 : 1,
           },
           style,
         ]}

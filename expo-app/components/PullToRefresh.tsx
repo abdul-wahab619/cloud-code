@@ -57,6 +57,11 @@ export function PullToRefresh({
           const newPullPosition = Math.min(dy, MAX_PULL_DISTANCE);
           setPullPosition(newPullPosition);
           panY.setValue(newPullPosition);
+
+          // Update rotation based on pull progress
+          const progress = Math.min(newPullPosition / REFRESH_THRESHOLD, 1);
+          rotation.setValue(progress);
+
           setPulling(true);
 
           // Check if we've crossed the threshold
@@ -77,7 +82,7 @@ export function PullToRefresh({
           triggerRefresh.current = false;
           Animated.spring(panY, {
             toValue: REFRESH_THRESHOLD,
-            useNativeDriver: true,
+            useNativeDriver: Platform.OS !== 'web',
           }).start();
 
           await onRefresh();
@@ -85,17 +90,19 @@ export function PullToRefresh({
           // Reset after refresh
           Animated.spring(panY, {
             toValue: 0,
-            useNativeDriver: true,
+            useNativeDriver: Platform.OS !== 'web',
           }).start(() => {
             setPullPosition(0);
+            rotation.setValue(0);
           });
         } else {
           // Snap back
           Animated.spring(panY, {
             toValue: 0,
-            useNativeDriver: true,
+            useNativeDriver: Platform.OS !== 'web',
           }).start(() => {
             setPullPosition(0);
+            rotation.setValue(0);
           });
         }
       },
@@ -103,7 +110,7 @@ export function PullToRefresh({
   ).current;
 
   const pullProgress = Math.min(pullPosition / REFRESH_THRESHOLD, 1);
-  const rotation = pullProgress * 360;
+  const rotation = useRef(new Animated.Value(0)).current;
 
   return (
     <View style={styles.container}>
@@ -112,7 +119,10 @@ export function PullToRefresh({
         style={[
           styles.refreshIndicator,
           {
-            transform: [{ translateY: Animated.subtract(panY, 60) }],
+            transform: [{ translateY: panY.interpolate({
+              inputRange: [0, MAX_PULL_DISTANCE],
+              outputRange: [-60, MAX_PULL_DISTANCE - 60],
+            }) }],
           },
         ]}
       >
@@ -122,9 +132,9 @@ export function PullToRefresh({
           <Animated.View
             style={{
               transform: [{ rotate: rotation.interpolate({
-              inputRange: [0, 1],
-              outputRange: ['0deg', '180deg'],
-            }) }],
+                inputRange: [0, 1],
+                outputRange: ['0deg', '180deg'],
+              }) }],
             }}
           >
             <View style={styles.arrow} />
