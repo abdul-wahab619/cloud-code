@@ -224,6 +224,8 @@ export const activeSessionStorage = {
     output: string[];
     status: 'starting' | 'running' | 'completed' | 'error';
     repository?: string;
+    startTime?: number;
+    lastUpdateTime?: number;
   }): Promise<void> => {
     await storage.set(STORAGE_KEYS.ACTIVE_SESSION, session);
   },
@@ -234,6 +236,8 @@ export const activeSessionStorage = {
     output: string[];
     status: 'starting' | 'running' | 'completed' | 'error';
     repository?: string;
+    startTime?: number;
+    lastUpdateTime?: number;
   } | null> => {
     return await storage.get(STORAGE_KEYS.ACTIVE_SESSION);
   },

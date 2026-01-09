@@ -58,7 +58,9 @@ function getBiometricType(types: LocalAuthentication.AuthenticationType[]): Biom
   if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
     return 'fingerprint';
   }
-  if (types.includes(LocalAuthentication.AuthenticationType.IRIS_RECOGNITION)) {
+  // Check for iris recognition (platform-specific, may not exist)
+  const irisType = 4; // IRIS_RECOGNITION constant value
+  if (types.includes(irisType as LocalAuthentication.AuthenticationType)) {
     return 'iris';
   }
   return 'none';

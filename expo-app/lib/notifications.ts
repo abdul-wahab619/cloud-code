@@ -32,12 +32,12 @@ export async function initializeNotifications(): Promise<boolean> {
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
 
-    if (existingStatus === 'not-determined') {
+    if (existingStatus === Notifications.PermissionStatus.UNDETERMINED) {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
 
-    if (finalStatus !== 'granted') {
+    if (finalStatus !== Notifications.PermissionStatus.GRANTED) {
       return false;
     }
 
@@ -97,12 +97,14 @@ export async function initializeNotifications(): Promise<boolean> {
  */
 export async function getPushToken(): Promise<string | null> {
   try {
-    const { data: token } = await Notifications.getExpoPushTokenAsync();
+    const tokenData = await Notifications.getExpoPushTokenAsync();
+    // Expo returns either a string or an object with data property
+    const token = typeof tokenData === 'string' ? tokenData : (tokenData as { data: string }).data;
 
     // Send token to server
-    await registerPushToken(token.data);
+    await registerPushToken(token);
 
-    return token.data;
+    return token;
   } catch (error) {
     console.error('Failed to get push token:', error);
     return null;
@@ -156,6 +158,7 @@ export async function scheduleLocalNotification({
         sound,
       },
       trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
         seconds,
       },
     });

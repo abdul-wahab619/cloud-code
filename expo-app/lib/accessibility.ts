@@ -215,7 +215,8 @@ export async function isInvertColorsEnabled(): Promise<boolean> {
  */
 export async function isLargerTextEnabled(): Promise<boolean> {
   try {
-    return await AccessibilityInfo.isLargerTextEnabled();
+    // @ts-expect-error - isLargerTextEnabled may not be available in all RN versions
+    return await AccessibilityInfo.isLargerTextEnabled?.() ?? false;
   } catch {
     return false;
   }
@@ -541,9 +542,11 @@ export function focusRef(ref: FocusRef): boolean {
     const nodeHandle = findNodeHandle(ref.current);
     if (nodeHandle) {
       if (Platform.OS === 'android') {
+        // @ts-expect-error - Platform-specific Android API
         UIManager.sendAccessibilityEvent(
           nodeHandle,
-          UIManager.AccessibilityEventTypes.typeViewFocused
+          // @ts-expect-error - Platform-specific Android API
+          UIManager.AccessibilityEventTypes?.typeViewFocused
         );
       }
       return true;
@@ -563,10 +566,11 @@ export function setAccessibilityFocus(ref: FocusRef): boolean {
   try {
     const nodeHandle = findNodeHandle(ref.current);
     if (nodeHandle) {
+      // @ts-expect-error - Platform-specific Android API
       UIManager.sendAccessibilityEvent(
         nodeHandle,
-        // @ts-expect-error - Platform-specific API
-        UIManager.AccessibilityEventTypes.typeViewAccessibilityFocused
+        // @ts-expect-error - Platform-specific Android API
+        UIManager.AccessibilityEventTypes?.typeViewAccessibilityFocused
       );
       return true;
     }
@@ -636,7 +640,10 @@ export function createAccessibilityState(
 export function mergeAccessibilityStates(
   ...states: (AccessibilityState | undefined)[]
 ): AccessibilityState {
-  return states.reduce((acc, state) => ({ ...acc, ...state }), {});
+  return states.reduce<AccessibilityState>(
+    (acc, state) => ({ ...acc, ...state }),
+    {}
+  ) as AccessibilityState;
 }
 
 /**

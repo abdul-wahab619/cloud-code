@@ -17,6 +17,14 @@ import type {
 } from './types';
 import { apiClient } from './api';
 
+// Get the base URL (same logic as in api.ts)
+const getBaseURL = () => {
+  if (typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+  return 'https://cloud-code.finhub.workers.dev';
+};
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -61,7 +69,7 @@ class UserServiceClass {
     error?: string;
   }> {
     try {
-      const response = await fetch(`${apiClient.options.prefixUrl}/api/users/register`, {
+      const response = await fetch(`${getBaseURL()}/api/users/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(credentials),
@@ -97,7 +105,7 @@ class UserServiceClass {
     error?: string;
   }> {
     try {
-      const response = await fetch(`${apiClient.options.prefixUrl}/api/users/login`, {
+      const response = await fetch(`${getBaseURL()}/api/users/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(credentials),
@@ -131,7 +139,7 @@ class UserServiceClass {
       // Notify server of logout
       const tokens = await this.getTokens();
       if (tokens) {
-        await fetch(`${apiClient.options.prefixUrl}/api/users/logout`, {
+        await fetch(`${getBaseURL()}/api/users/logout`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -156,7 +164,7 @@ class UserServiceClass {
    */
   async requestPasswordReset(email: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const response = await fetch(`${apiClient.options.prefixUrl}/api/users/reset-password`, {
+      const response = await fetch(`${getBaseURL()}/api/users/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
@@ -186,7 +194,7 @@ class UserServiceClass {
       const tokens = await this.getTokens();
       if (!tokens) return null;
 
-      const response = await fetch(`${apiClient.options.prefixUrl}/api/users/me`, {
+      const response = await fetch(`${getBaseURL()}/api/users/me`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -220,7 +228,7 @@ class UserServiceClass {
       const tokens = await this.getTokens();
       if (!tokens) return null;
 
-      const response = await fetch(`${apiClient.options.prefixUrl}/api/users/me`, {
+      const response = await fetch(`${getBaseURL()}/api/users/me`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -255,7 +263,7 @@ class UserServiceClass {
       const tokens = await this.getTokens();
       if (!tokens?.refreshToken) return null;
 
-      const response = await fetch(`${apiClient.options.prefixUrl}/api/users/refresh`, {
+      const response = await fetch(`${getBaseURL()}/api/users/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken: tokens.refreshToken }),
@@ -418,7 +426,7 @@ class UserServiceClass {
     // Sync with server in background
     this.ensureValidToken().then((token) => {
       if (token) {
-        fetch(`${apiClient.options.prefixUrl}/api/users/usage`, {
+        fetch(`${getBaseURL()}/api/users/usage`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

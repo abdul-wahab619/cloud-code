@@ -66,7 +66,7 @@ const ANALYTICS_ENDPOINT = '/api/analytics/events';
 class AnalyticsServiceClass {
   private state: AnalyticsState;
   private queue: QueuedEvent[] = [];
-  private flushTimer: NodeJS.Timeout | null = null;
+  private flushTimer: ReturnType<typeof setInterval> | null = null;
   private sessionStartTime: number = 0;
 
   constructor() {

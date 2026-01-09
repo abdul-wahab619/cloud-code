@@ -298,8 +298,8 @@ function ActivitySection() {
       }).length;
 
       data.push({
-        day: days[dayIndex],
-        value: count,
+        date: days[dayIndex],
+        count,
       });
     }
 

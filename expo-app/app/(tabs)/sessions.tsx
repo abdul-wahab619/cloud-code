@@ -716,7 +716,7 @@ const styles = StyleSheet.create({
     padding: 12,
     backgroundColor: 'rgba(34, 197, 94, 0.1)',
     borderRadius: 8,
-    border: 1,
+    borderWidth: 1,
     borderColor: 'rgba(34, 197, 94, 0.3)',
   },
   prText: {
@@ -1482,7 +1482,7 @@ function ChatScreenContent() {
 
       // Handle different error types with specific messages
       let errorMessage = 'Something went wrong. Please try again.';
-      let errorId = ErrorIds.CHAT_SEND_UNKNOWN;
+      let errorId: string = ErrorIds.CHAT_SEND_UNKNOWN;
 
       if (error instanceof Error) {
         if (error.name === 'AbortError') {

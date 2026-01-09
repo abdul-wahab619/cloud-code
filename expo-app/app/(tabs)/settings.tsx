@@ -277,7 +277,7 @@ function SettingsScreenContent() {
     if (typeof window !== 'undefined') {
       window.location.href = '/gh-setup';
     } else {
-      await WebBrowser.openAsync('https://cloud-code.finhub.workers.dev/gh-setup');
+      await WebBrowser.openBrowserAsync('https://cloud-code.finhub.workers.dev/gh-setup');
     }
   };
 

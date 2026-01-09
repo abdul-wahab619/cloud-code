@@ -7,8 +7,7 @@
 
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
-import { Constants } from 'expo-constants';
+import Constants from 'expo-constants';
 import { storage } from '../lib/offlineStorage';
 
 // ============================================================================
@@ -107,7 +106,7 @@ class NotificationServiceClass {
             identifier: 'view',
             buttonTitle: 'View',
             options: {
-              foreground: true,
+              opensAppToForeground: true,
             },
           },
         ]);
@@ -117,7 +116,6 @@ class NotificationServiceClass {
             identifier: 'reply',
             buttonTitle: 'Reply',
             options: {
-              foreground: true,
               opensAppToForeground: true,
             },
           },
@@ -137,9 +135,11 @@ class NotificationServiceClass {
   // ========================================================================
 
   async requestPermissions(): Promise<boolean> {
-    if (!Device.isDevice) {
-      console.warn('[NotificationService] Push notifications require a physical device');
-      return false;
+    // Check if running on a physical device (not simulator/emulator)
+    const isDevice = Platform.OS !== 'web' && !(__DEV__ && (Platform.OS === 'ios' || Platform.OS === 'android'));
+    if (!isDevice) {
+      console.warn('[NotificationService] Push notifications may not work in simulator/emulator');
+      // Continue anyway - notifications can still be scheduled locally
     }
 
     const { status: existingStatus } = await Notifications.getPermissionsAsync();

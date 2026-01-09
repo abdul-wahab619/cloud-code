@@ -47,10 +47,17 @@ class SessionPersistenceManager {
     if (saved) {
       // Check if session is recent (within 24 hours)
       const dayInMs = 24 * 60 * 60 * 1000;
-      if (Date.now() - saved.startTime < dayInMs) {
+      const startTime = saved.startTime ?? saved.repository ? Date.now() - 1000 : 0;
+      if (Date.now() - startTime < dayInMs) {
         this.currentState = {
-          ...saved,
+          id: saved.id,
+          prompt: saved.prompt,
+          output: saved.output,
+          status: saved.status,
+          repository: saved.repository,
           selectedRepos: saved.repository ? [saved.repository] : [],
+          startTime: saved.startTime ?? Date.now(),
+          lastUpdateTime: saved.lastUpdateTime ?? Date.now(),
         };
       } else {
         // Session is stale, clear it
@@ -232,4 +239,3 @@ const sessionPersistence = new SessionPersistenceManager();
 sessionPersistence.initialize().catch(console.error);
 
 export { sessionPersistence };
-export type { ActiveSessionState };

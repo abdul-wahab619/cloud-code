@@ -33,7 +33,7 @@ interface SyncResult {
 class SyncManager {
   private isSyncing: boolean = false;
   private isOnline: boolean = true;
-  private syncInterval: NodeJS.Timeout | null = null;
+  private syncInterval: ReturnType<typeof setInterval> | null = null;
   private listeners: Set<(isOnline: boolean) => void> = new Set();
 
   constructor() {
@@ -173,11 +173,12 @@ class SyncManager {
     try {
       const queue = await offlineQueue.getAll();
 
-      // Sort by priority and timestamp
+      // Sort by retry count (fewer retries = higher priority) and timestamp
       const sortedQueue = queue.sort((a, b) => {
-        const priorityOrder = { high: 0, normal: 1, low: 2 };
-        const priorityDiff = priorityOrder[a.retryCount] - priorityOrder[b.retryCount];
-        if (priorityDiff !== 0) return priorityDiff;
+        // Items with fewer retries should be processed first
+        const retryDiff = a.retryCount - b.retryCount;
+        if (retryDiff !== 0) return retryDiff;
+        // Then by timestamp (older items first)
         return a.timestamp - b.timestamp;
       });
 
@@ -195,8 +196,20 @@ class SyncManager {
           result.processed++;
         } catch (error) {
           result.failed++;
+          // Convert QueueItem to SyncJob for error reporting
+          const errorJob: SyncJob = {
+            id: item.id,
+            type: 'api_request',
+            endpoint: '',
+            method: 'POST',
+            payload: item.payload,
+            priority: 'normal',
+            timestamp: item.timestamp,
+            retryCount: item.retryCount,
+            maxRetries: 3,
+          };
           result.errors.push({
-            job: item,
+            job: errorJob,
             error: error instanceof Error ? error.message : 'Unknown error',
           });
 

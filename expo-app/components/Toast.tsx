@@ -148,7 +148,7 @@ export function Toast({ id, message, type, duration, onDismiss }: ToastProps) {
           <View style={[styles.toast, { borderLeftColor: config.bgColor }]}>
             <View style={styles.contentRow}>
               <Ionicons
-                name={config.iconName}
+                name={config.iconName as any}
                 size={20}
                 color={config.bgColor}
                 style={styles.icon}

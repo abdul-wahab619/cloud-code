@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { View, StyleSheet, Text, Dimensions } from 'react-native';
-import { LineChart } from 'victory-native';
+import { VictoryLine, VictoryChart } from 'victory-native';
 import { colors } from '../lib/tokens/colors';
 
 interface ActivityChartProps {
@@ -28,26 +28,22 @@ export function ActivityChart({ data, color = colors.primary, height = 120 }: Ac
 
   return (
     <View style={[styles.container, { height }]}>
-      <LineChart
-        data={chartData}
+      <VictoryChart
         width={width}
         height={height}
-        theme={{
-          axis: {
-            stroke: colors.border,
-          },
-          grid: {
-            stroke: colors.border,
-          },
-        }}
-        style={styles.chart}
-        animate
-        animationConfig={{ duration: 300 }}
-        curve="monotoneX"
-        chartConfig={{
-          color: (opacity = 1) => `${color}${Math.round(opacity * 255).toString(16).padStart(2, '0')}`,
-        }}
-      />
+        animate={{ duration: 300 }}
+      >
+        <VictoryLine
+          data={chartData}
+          style={{
+            data: {
+              stroke: color,
+              strokeWidth: 2,
+            },
+          }}
+          interpolation="monotoneX"
+        />
+      </VictoryChart>
     </View>
   );
 }
