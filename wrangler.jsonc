@@ -14,7 +14,7 @@
 		"ENVIRONMENT": "production"
 	},
 	"assets": {
-		"directory": "expo-app/dist",
+		"directory": "expo-app/dist-web",
 		"binding": "DASHBOARD_ASSETS"
 	},
 	"containers": [
