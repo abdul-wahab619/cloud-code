@@ -1,0 +1,67 @@
+const faqs = [
+	{
+		question: "How does Cloud Code run code on my phone?",
+		answer: "Cloud Code doesn't run code locally on your phone. Instead, it uses Cloudflare Containers to execute code in a remote environment. Your phone is just the interface — all the heavy lifting happens in the cloud."
+	},
+	{
+		question: "Can I use my own Claude API key?",
+		answer: "Currently, Cloud Code includes access to Claude through our centralized API. This means no setup required — just install and start coding. We're working on bringing your own key (BYOK) support for enterprise users."
+	},
+	{
+		question: "What programming languages are supported?",
+		answer: "Cloud Code supports all languages that Claude Code supports, including JavaScript, TypeScript, Python, Go, Rust, Java, C++, and many more. The underlying containers run on Linux with full Node.js and Python support."
+	},
+	{
+		question: "Is my code private and secure?",
+		answer: "Yes. All sessions are encrypted in transit and at rest. We use Cloudflare's secure infrastructure and never store your code longer than necessary. GitHub tokens are stored using industry-standard encryption."
+	},
+	{
+		question: "Can I work with private repositories?",
+		answer: "Absolutely! Connect your GitHub account with our OAuth flow, and you'll have access to all your repositories, public and private. We use the official GitHub App integration for secure access."
+	},
+	{
+		question: "What happens when I'm offline?",
+		answer: "Cloud Code has an offline-first architecture. You can browse sessions, view repositories, and queue actions while offline. When you reconnect, everything syncs automatically."
+	},
+	{
+		question: "How does the free trial work?",
+		answer: "New users get 10 free sessions per month on the free tier. When you upgrade to Pro, you get a 14-day free trial with unlimited sessions and access to Claude Opus. No credit card required to start."
+	},
+	{
+		question: "Can I cancel my subscription anytime?",
+		answer: "Yes, you can cancel your Pro or Team subscription at any time. You'll continue to have access until the end of your billing period, and your data will be retained for 30 days."
+	},
+];
+---
+
+<section id="faq" class="py-24 relative">
+	<div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+		<!-- Section Header -->
+		<div class="text-center mb-16">
+			<h2 class="text-3xl sm:text-4xl md:text-5xl font-bold mb-4">
+				Frequently Asked
+				<span class="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">Questions</span>
+			</h2>
+			<p class="text-lg text-slate-400">
+				Everything you need to know about Cloud Code.
+			</p>
+		</div>
+
+		<!-- FAQ Accordion -->
+		<div class="space-y-4">
+			{faqs.map((faq, index) => (
+				<div class="group">
+					<details class="bg-slate-900/50 border border-slate-800 rounded-xl overflow-hidden">
+						<summary class="flex items-center justify-between p-5 cursor-pointer hover:bg-slate-800/50 transition-colors select-none">
+							<span class="font-semibold pr-4">{faq.question}</span>
+							<i class="ph ph-caret-down group-open:rotate-180 transition-transform flex-shrink-0"></i>
+						</summary>
+						<div class="px-5 pb-5 text-slate-400 leading-relaxed border-t border-slate-800/50 pt-4">
+							{faq.answer}
+						</div>
+					</details>
+				</div>
+			))}
+		</div>
+	</div>
+</section>

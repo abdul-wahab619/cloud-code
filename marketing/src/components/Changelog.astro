@@ -1,0 +1,101 @@
+const updates = [
+	{
+		version: '1.0.0',
+		date: 'January 9, 2026',
+		type: 'major',
+		changes: [
+			'🎉 Initial public release of Cloud Code mobile apps',
+			'✨ Offline-first architecture with sync on reconnect',
+			'📱 Native iOS and Android apps with Expo',
+			'🤖 Claude Code integration with Sonnet and Opus',
+			'🔗 GitHub App integration for repo access',
+			'📊 Analytics dashboard with charts',
+			'🔔 Push notifications for session completion',
+			'🌙 Dark mode with system preference support',
+			'🔒 Biometric authentication (Face ID / Touch ID)'
+		]
+	},
+	{
+		version: '0.9.0',
+		date: 'January 5, 2026',
+		type: 'minor',
+		changes: [
+			'✨ Session replay feature',
+			'🌿 Branch selection for sessions',
+			'📤 Session sharing and export',
+			'🎨 Design system with reusable components',
+			'♿ Accessibility audit completed (WCAG 2.1 AA)'
+		]
+	},
+	{
+		version: '0.5.0',
+		date: 'December 20, 2025',
+		type: 'minor',
+		changes: [
+			'🔷 Beta testing begins',
+			'✅ Issue management UI',
+			'📥 Pull request detail view',
+			'🔍 Search and filters for issues',
+			'👤 User profile and settings'
+		]
+	},
+];
+---
+
+<section class="py-24 relative">
+	<!-- Background -->
+	<div class="absolute inset-0 bg-[radial-gradient(ellipse_100%_50%_at_20%_50%,rgba(120,80,255,0.06),transparent)]"></div>
+
+	<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 relative">
+		<!-- Section Header -->
+		<div class="text-center mb-16">
+			<h2 class="text-3xl sm:text-4xl md:text-5xl font-bold mb-4">
+				What's
+				<span class="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">New</span>
+			</h2>
+			<p class="text-lg text-slate-400">
+				Follow our journey as we build the future of mobile coding.
+			</p>
+		</div>
+
+		<!-- Updates Timeline -->
+		<div class="space-y-8">
+			{updates.map((update) => (
+				<div class="relative pl-8 pb-8 border-l-2 border-slate-800 last:pb-0">
+					<!-- Dot -->
+					<div class={`absolute -left-[9px] top-0 w-4 h-4 rounded-full ${
+						update.type === 'major' ? 'bg-violet-500' : 'bg-slate-600'
+					}`}></div>
+
+					<!-- Content -->
+					<div class="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
+						<div class="flex items-center gap-3 mb-4">
+							<span class={`px-2 py-1 rounded-md text-xs font-semibold ${
+								update.type === 'major'
+									? 'bg-violet-500/20 text-violet-400'
+									: 'bg-slate-700/50 text-slate-400'
+							}`}>v{update.version}</span>
+							<span class="text-slate-500 text-sm">{update.date}</span>
+						</div>
+						<ul class="space-y-2">
+							{update.changes.map(change => (
+								<li class="text-slate-300 text-sm flex items-start gap-2">
+									<span class="text-slate-500">•</span>
+									<span>{change}</span>
+								</li>
+							))}
+						</ul>
+					</div>
+				</div>
+			))}
+		</div>
+
+		<!-- View All Link -->
+		<div class="text-center mt-12">
+			<a href="/changelog" class="inline-flex items-center gap-2 text-violet-400 hover:text-violet-300 font-medium transition-colors">
+				View full changelog
+				<i class="ph ph-arrow-right"></i>
+			</a>
+		</div>
+	</div>
+</section>
