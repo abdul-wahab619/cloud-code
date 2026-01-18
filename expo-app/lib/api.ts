@@ -11,35 +11,72 @@ const getBaseURL = () => {
   return 'https://cloud-code.finhub.workers.dev';
 };
 
-const apiClient = ky.create({
+// Check if test mode is enabled from URL query parameter
+const isTestMode = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const url = new URL(window.location.href);
+  return url.searchParams.get('test') === 'true';
+};
+
+// Get search params including test mode if enabled
+const getSearchParams = () => {
+  const params = new URLSearchParams();
+  if (isTestMode()) {
+    params.set('test', 'true');
+  }
+  return params;
+};
+
+// Build URL with test mode parameter
+const buildUrl = (path: string): string => {
+  const testMode = isTestMode();
+  if (testMode) {
+    const separator = path.includes('?') ? '&' : '?';
+    return `${path}${separator}test=true`;
+  }
+  return path;
+};
+
+export const apiClient = ky.create({
   prefixUrl: getBaseURL(),
   timeout: 30000,
   retry: 2,
+  hooks: {
+    beforeRequest: [
+      (request) => {
+        // Automatically add test mode parameter to API requests
+        if (isTestMode()) {
+          const url = new URL(request.url);
+          url.searchParams.set('test', 'true');
+        }
+      },
+    ],
+  },
 });
 
 export const api = {
   // Status endpoints
   getStatus: (): Promise<GitHubStatus> =>
-    apiClient.get('gh-status').json(),
+    apiClient.get('gh-status').json<GitHubStatus>(),
 
   // Tasks endpoints
   getTasks: (): Promise<Task[]> =>
-    apiClient.get('api/tasks').json(),
+    apiClient.get('api/tasks').json<Task[]>(),
 
   createTask: (task: Partial<Task>): Promise<Task> =>
-    apiClient.post('api/tasks', { json: task }).json(),
+    apiClient.post('api/tasks', { json: task }).json<Task>(),
 
   // Sessions endpoints
   getSessions: (): Promise<Session[]> =>
-    apiClient.get('api/sessions').json(),
+    apiClient.get('api/sessions').json<Session[]>(),
 
   // Issues endpoints
   getIssues: (): Promise<Issue[]> =>
-    apiClient.get('api/issues').json(),
+    apiClient.get('api/issues').json<Issue[]>(),
 
   // Stats endpoint
   getStats: (): Promise<DashboardStats> =>
-    apiClient.get('api/stats').json(),
+    apiClient.get('api/stats').json<DashboardStats>(),
 
   // Repositories endpoint
   getRepositories: async (): Promise<RepositoryDetail[]> => {
@@ -49,7 +86,7 @@ export const api = {
 
   // Test webhook
   testWebhook: (issueNumber?: number): Promise<{ message: string; issueNumber?: number }> =>
-    apiClient.post('api/test-webhook', { json: { issueNumber } }).json(),
+    apiClient.post('api/test-webhook', { json: { issueNumber } }).json<{ message: string; issueNumber?: number }>(),
 };
 
 // SSE client for interactive sessions
@@ -62,7 +99,11 @@ export async function startInteractiveSession(
   repository?: { url: string; name: string; branch?: string },
   options: { maxTurns?: number; permissionMode?: string; createPR?: boolean } = {}
 ): Promise<SSEResponse> {
-  const response = await fetch(`${getBaseURL()}/interactive/start`, {
+  const baseUrl = getBaseURL();
+  const testModeParam = isTestMode() ? '?test=true' : '';
+  const url = `${baseUrl}/interactive/start${testModeParam}`;
+
+  const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -84,9 +125,11 @@ export async function startInteractiveSession(
 }
 
 export async function cancelSession(sessionId: string): Promise<{ success: boolean; message: string }> {
-  return apiClient.delete(`interactive/${sessionId}`).json();
+  const testModeParam = isTestMode() ? '?test=true' : '';
+  return apiClient.delete(`interactive/${sessionId}${testModeParam}`).json<{ success: boolean; message: string }>();
 }
 
 export async function getSessionStatus(sessionId: string): Promise<any> {
-  return apiClient.get(`interactive/status?sessionId=${sessionId}`).json();
+  const testModeParam = isTestMode() ? `&test=true` : `?sessionId=${sessionId}`;
+  return apiClient.get(`interactive/status${testModeParam}`).json();
 }

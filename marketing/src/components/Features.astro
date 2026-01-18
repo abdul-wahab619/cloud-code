@@ -1,0 +1,133 @@
+const features = [
+	{
+		icon: 'ph-lightning',
+		title: 'Zero Setup Required',
+		description: 'No local environment needed. All code runs remotely on Cloudflare Containers with Claude Code pre-installed.',
+		color: 'from-yellow-400 to-orange-500'
+	},
+	{
+		icon: 'ph-device-mobile',
+		title: 'Native Mobile Apps',
+		description: 'Full-featured iOS and Android apps built with Expo. Pull-to-refresh, swipe actions, haptic feedback — the way mobile should be.',
+		color: 'from-violet-400 to-fuchsia-500'
+	},
+	{
+		icon: 'ph-robot',
+		title: 'Claude AI Built-in',
+		description: 'Powered by Claude Code — the most capable AI coding assistant. No API keys, no setup, just results.',
+		color: 'from-pink-400 to-rose-500'
+	},
+	{
+		icon: 'ph-github-logo',
+		title: 'GitHub Integration',
+		description: 'Connect your repos in one tap. Create issues, view PRs, and merge code — all from the app.',
+		color: 'from-slate-400 to-slate-600'
+	},
+	{
+		icon: 'ph-cloud-arrow-up',
+		title: 'Offline-First Architecture',
+		description: 'Works without internet. Queue actions when offline, sync automatically when you\'re back.',
+		color: 'from-cyan-400 to-blue-500'
+	},
+	{
+		icon: 'ph-chart-line-up',
+		title: 'Analytics Dashboard',
+		description: 'Track your coding activity with beautiful charts. See success rates, session history, and productivity trends.',
+		color: 'from-green-400 to-emerald-500'
+	},
+];
+---
+
+<section id="features" class="py-24 relative">
+	<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+		<div class="text-center mb-16">
+			<h2 class="text-3xl sm:text-4xl md:text-5xl font-bold mb-4">
+				Everything You Need to
+				<span class="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-fuchsia-400">Code on the Go</span>
+			</h2>
+			<p class="text-lg text-slate-400 max-w-2xl mx-auto">
+				Powerful features that make mobile coding not just possible, but preferable.
+			</p>
+		</div>
+
+		<div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+			<div class="group relative p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-slate-700 transition-all duration-300">
+				<div class="absolute inset-0 bg-gradient-to-br from-yellow-400/5 to-orange-500/5 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+				<div class="relative">
+					<div class="w-12 h-12 rounded-xl bg-gradient-to-br from-yellow-400 to-orange-500 p-0.5 mb-4">
+						<div class="w-full h-full bg-slate-900 rounded-[10px] flex items-center justify-center">
+							<i class="ph ph-lightning text-xl"></i>
+						</div>
+					</div>
+					<h3 class="text-xl font-semibold mb-2">Zero Setup Required</h3>
+					<p class="text-slate-400 leading-relaxed">No local environment needed. All code runs remotely on Cloudflare Containers with Claude Code pre-installed.</p>
+				</div>
+			</div>
+
+			<div class="group relative p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-slate-700 transition-all duration-300">
+				<div class="absolute inset-0 bg-gradient-to-br from-violet-400/5 to-fuchsia-500/5 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+				<div class="relative">
+					<div class="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-400 to-fuchsia-500 p-0.5 mb-4">
+						<div class="w-full h-full bg-slate-900 rounded-[10px] flex items-center justify-center">
+							<i class="ph ph-device-mobile text-xl"></i>
+						</div>
+					</div>
+					<h3 class="text-xl font-semibold mb-2">Native Mobile Apps</h3>
+					<p class="text-slate-400 leading-relaxed">Full-featured iOS and Android apps built with Expo. Pull-to-refresh, swipe actions, haptic feedback — the way mobile should be.</p>
+				</div>
+			</div>
+
+			<div class="group relative p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-slate-700 transition-all duration-300">
+				<div class="absolute inset-0 bg-gradient-to-br from-pink-400/5 to-rose-500/5 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+				<div class="relative">
+					<div class="w-12 h-12 rounded-xl bg-gradient-to-br from-pink-400 to-rose-500 p-0.5 mb-4">
+						<div class="w-full h-full bg-slate-900 rounded-[10px] flex items-center justify-center">
+							<i class="ph ph-robot text-xl"></i>
+						</div>
+					</div>
+					<h3 class="text-xl font-semibold mb-2">Claude AI Built-in</h3>
+					<p class="text-slate-400 leading-relaxed">Powered by Claude Code — the most capable AI coding assistant. No API keys, no setup, just results.</p>
+				</div>
+			</div>
+
+			<div class="group relative p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-slate-700 transition-all duration-300">
+				<div class="absolute inset-0 bg-gradient-to-br from-slate-400/5 to-slate-600/5 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+				<div class="relative">
+					<div class="w-12 h-12 rounded-xl bg-gradient-to-br from-slate-400 to-slate-600 p-0.5 mb-4">
+						<div class="w-full h-full bg-slate-900 rounded-[10px] flex items-center justify-center">
+							<i class="ph ph-github-logo text-xl"></i>
+						</div>
+					</div>
+					<h3 class="text-xl font-semibold mb-2">GitHub Integration</h3>
+					<p class="text-slate-400 leading-relaxed">Connect your repos in one tap. Create issues, view PRs, and merge code — all from the app.</p>
+				</div>
+			</div>
+
+			<div class="group relative p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-slate-700 transition-all duration-300">
+				<div class="absolute inset-0 bg-gradient-to-br from-cyan-400/5 to-blue-500/5 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+				<div class="relative">
+					<div class="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 p-0.5 mb-4">
+						<div class="w-full h-full bg-slate-900 rounded-[10px] flex items-center justify-center">
+							<i class="ph ph-cloud-arrow-up text-xl"></i>
+						</div>
+					</div>
+					<h3 class="text-xl font-semibold mb-2">Offline-First Architecture</h3>
+					<p class="text-slate-400 leading-relaxed">Works without internet. Queue actions when offline, sync automatically when you're back.</p>
+				</div>
+			</div>
+
+			<div class="group relative p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-slate-700 transition-all duration-300">
+				<div class="absolute inset-0 bg-gradient-to-br from-green-400/5 to-emerald-500/5 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+				<div class="relative">
+					<div class="w-12 h-12 rounded-xl bg-gradient-to-br from-green-400 to-emerald-500 p-0.5 mb-4">
+						<div class="w-full h-full bg-slate-900 rounded-[10px] flex items-center justify-center">
+							<i class="ph ph-chart-line-up text-xl"></i>
+						</div>
+					</div>
+					<h3 class="text-xl font-semibold mb-2">Analytics Dashboard</h3>
+					<p class="text-slate-400 leading-relaxed">Track your coding activity with beautiful charts. See success rates, session history, and productivity trends.</p>
+				</div>
+			</div>
+		</div>
+	</div>
+</section>

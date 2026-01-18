@@ -1,8 +1,26 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, StyleSheet, KeyboardAvoidingView, ActivityIndicator, Platform } from 'react-native';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { View, Text, ScrollView, Pressable, TextInput, StyleSheet, KeyboardAvoidingView, ActivityIndicator, Platform, Modal, Animated, Linking, Alert } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../lib/styles';
 import { useAppStore, RepositoryDetail } from '../../lib/useStore';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
+import { ErrorIds } from '../../constants/errorIds';
+import { SessionHistoryModal } from '../../components/SessionHistoryModal';
+import { OfflineBanner } from '../../components/OfflineBanner';
+import { OfflineQueue } from '../../components/OfflineQueue';
+import { SessionReplay, SessionData, SessionEvent } from '../../components/SessionReplay';
+import { useScreenTracking } from '../../contexts/AnalyticsContext';
+import { syncManager } from '../../lib/syncManager';
+import { offlineQueue } from '../../lib/offlineStorage';
+
+// Request handling constants
+const REQUEST_TIMEOUT_MS = 30000; // 30 second timeout
+
+// Session storage constants
+const MAX_SESSION_STORAGE_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+const SESSION_STORAGE_KEY = 'claude_chat_sessions';
+const CURRENT_SESSION_KEY = 'claude_chat_current';
 
 // Message types
 interface ChatMessage {
@@ -16,9 +34,369 @@ interface ChatMessage {
     repository?: string;
     prNumber?: number;
   };
+  errorId?: string; // Error ID for tracking
 }
 
-// Parse markdown for code blocks
+// Session storage type
+interface ChatSession {
+  id: string;
+  title: string; // First user message or "New Chat"
+  messages: Omit<ChatMessage, 'isStreaming'>[];
+  sessionId: string | null;
+  selectedRepos: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface SessionListItem {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  messageCount: number;
+  tokenCount: number;
+}
+
+/**
+ * Structured logging utility for error tracking
+ */
+const logError = (errorId: string, error: unknown, context?: Record<string, unknown>) => {
+  console.error(`[${errorId}]`, error, context ? { context } : '');
+};
+
+const logForDebugging = (message: string, data?: unknown) => {
+  if (__DEV__) {
+    console.log('[DEBUG]', message, data);
+  }
+};
+
+// LocalStorage helpers for web platform with proper error handling
+const storage = {
+  getItem: (key: string): string | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+      return localStorage.getItem(key);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+        logError(ErrorIds.STORAGE_QUOTA_EXCEEDED, error, { key, operation: 'getItem' });
+      } else {
+        logError(ErrorIds.STORAGE_GET_ITEM, error, { key });
+      }
+      return null;
+    }
+  },
+  setItem: (key: string, value: string): boolean => {
+    if (typeof window === 'undefined') return false;
+    try {
+      localStorage.setItem(key, value);
+      return true;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+        logError(ErrorIds.STORAGE_QUOTA_EXCEEDED, error, { key, operation: 'setItem', valueLength: value.length });
+      } else {
+        logError(ErrorIds.STORAGE_SET_ITEM, error, { key });
+      }
+      return false;
+    }
+  },
+  removeItem: (key: string): void => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.removeItem(key);
+    } catch (error) {
+      logError(ErrorIds.STORAGE_REMOVE_ITEM, error, { key });
+    }
+  },
+};
+
+const generateSessionTitle = (messages: ChatMessage[]): string => {
+  const firstUserMessage = messages.find(m => m.role === 'user');
+  if (!firstUserMessage) return 'New Chat';
+  const content = firstUserMessage.content;
+  return content.length > 50 ? content.slice(0, 47) + '...' : content;
+};
+
+// Generate a persistent session ID for the current session
+let currentSessionId: string | null = null;
+
+const saveCurrentSession = (messages: ChatMessage[], sessionId: string | null, selectedRepos: string[]) => {
+  // Use a persistent ID for the current session to avoid duplicate history entries
+  if (!currentSessionId) {
+    currentSessionId = `session_${Date.now()}`;
+  }
+
+  const session: ChatSession = {
+    id: currentSessionId,
+    title: generateSessionTitle(messages),
+    messages: messages.map(({ isStreaming, ...msg }) => msg),
+    sessionId,
+    selectedRepos,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  storage.setItem(CURRENT_SESSION_KEY, JSON.stringify(session));
+
+  // Also save to session history if it has messages
+  if (messages.length > 0) {
+    saveSessionToHistory(session);
+  }
+};
+
+const saveSessionToHistory = (session: ChatSession) => {
+  const historyData = storage.getItem(SESSION_STORAGE_KEY);
+  let history: ChatSession[] = [];
+
+  try {
+    history = historyData ? JSON.parse(historyData) : [];
+  } catch (error) {
+    logError(ErrorIds.STORAGE_PARSE_FAILED, error, { context: 'saveSessionToHistory' });
+    // Backup corrupted data for potential recovery
+    try {
+      if (historyData) {
+        localStorage.setItem('claude_chat_sessions_corrupted_backup', historyData);
+        logForDebugging('Corrupted session data backed up for recovery');
+      }
+    } catch (backupError) {
+      logError(ErrorIds.STORAGE_SET_ITEM, backupError, { context: 'backup_corrupted_data' });
+    }
+    history = [];
+  }
+
+  // Remove old sessions that are too old
+  const now = Date.now();
+  history = history.filter(s => now - s.updatedAt <= MAX_SESSION_STORAGE_AGE_MS);
+
+  // Find if session with this ID already exists (using the persistent ID)
+  const existingIdx = history.findIndex(s => s.id === session.id);
+
+  if (existingIdx >= 0) {
+    history[existingIdx] = session;
+  } else {
+    history.unshift(session);
+  }
+
+  // Keep only the last 50 sessions
+  history = history.slice(0, 50);
+
+  storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(history));
+};
+
+const loadCurrentSession = (): ChatSession | null => {
+  const data = storage.getItem(CURRENT_SESSION_KEY);
+  if (!data) return null;
+
+  try {
+    const session = JSON.parse(data) as ChatSession;
+    // Check if session is too old
+    if (Date.now() - session.updatedAt > MAX_SESSION_STORAGE_AGE_MS) {
+      logForDebugging('Current session expired, clearing', { sessionId: session.id });
+      storage.removeItem(CURRENT_SESSION_KEY);
+      return null;
+    }
+    // Restore the persistent session ID
+    currentSessionId = session.id;
+    return session;
+  } catch (error) {
+    logError(ErrorIds.SESSION_LOAD_FAILED, error, { context: 'loadCurrentSession' });
+    return null;
+  }
+};
+
+const clearCurrentSession = () => {
+  currentSessionId = null; // Reset persistent session ID
+  storage.removeItem(CURRENT_SESSION_KEY);
+};
+
+const getFullChatSession = (sessionId: string): ChatSession | null => {
+  const historyData = storage.getItem(SESSION_STORAGE_KEY);
+  if (!historyData) return null;
+
+  try {
+    const sessions: ChatSession[] = JSON.parse(historyData);
+    return sessions.find(s => s.id === sessionId) ?? null;
+  } catch {
+    return null;
+  }
+};
+
+const getSessionHistory = (): SessionListItem[] => {
+  const historyData = storage.getItem(SESSION_STORAGE_KEY);
+  if (!historyData) return [];
+
+  try {
+    const sessions: ChatSession[] = JSON.parse(historyData);
+    const now = Date.now();
+
+    return sessions
+      .filter(s => now - s.updatedAt <= MAX_SESSION_STORAGE_AGE_MS)
+      .map(s => ({
+        id: s.id,
+        title: s.title || 'New Chat',
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+        messageCount: s.messages.length,
+        tokenCount: s.messages.reduce((sum, m) => sum + estimateTokens(m.content), 0),
+      }))
+      .sort((a, b) => b.updatedAt - a.updatedAt); // Most recent first
+  } catch {
+    return [];
+  }
+};
+
+const loadSessionFromHistory = (sessionId: string): ChatSession | null => {
+  const historyData = storage.getItem(SESSION_STORAGE_KEY);
+  if (!historyData) return null;
+
+  try {
+    const sessions: ChatSession[] = JSON.parse(historyData);
+    const session = sessions.find(s => s.id === sessionId);
+    if (!session) {
+      logForDebugging('Session not found in history', { sessionId });
+      return null;
+    }
+
+    // Check if session is too old
+    const age = Date.now() - session.updatedAt;
+    if (age > MAX_SESSION_STORAGE_AGE_MS) {
+      logForDebugging('Session expired', { sessionId, age });
+      return null;
+    }
+
+    return session;
+  } catch (error) {
+    logError(ErrorIds.SESSION_LOAD_FAILED, error, { context: 'loadSessionFromHistory', sessionId });
+    return null;
+  }
+};
+
+const deleteSessionFromHistory = (sessionId: string): boolean => {
+  const historyData = storage.getItem(SESSION_STORAGE_KEY);
+  if (!historyData) return false;
+
+  try {
+    const sessions: ChatSession[] = JSON.parse(historyData);
+    const filtered = sessions.filter(s => s.id !== sessionId);
+    return storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(filtered));
+  } catch (error) {
+    logError(ErrorIds.SESSION_DELETE_FAILED, error, { sessionId });
+    return false;
+  }
+};
+
+const clearAllHistory = (): void => {
+  storage.removeItem(SESSION_STORAGE_KEY);
+};
+
+// Language display name mapping for better code block labels
+const LANGUAGE_DISPLAY_NAMES: Record<string, string> = {
+  'js': 'JavaScript',
+  'javascript': 'JavaScript',
+  'ts': 'TypeScript',
+  'typescript': 'TypeScript',
+  'jsx': 'JSX',
+  'tsx': 'TSX',
+  'py': 'Python',
+  'python': 'Python',
+  'rb': 'Ruby',
+  'ruby': 'Ruby',
+  'go': 'Go',
+  'golang': 'Go',
+  'rs': 'Rust',
+  'rust': 'Rust',
+  'java': 'Java',
+  'kt': 'Kotlin',
+  'kotlin': 'Kotlin',
+  'swift': 'Swift',
+  'c': 'C',
+  'cpp': 'C++',
+  'c++': 'C++',
+  'cs': 'C#',
+  'csharp': 'C#',
+  'php': 'PHP',
+  'sh': 'Shell',
+  'shell': 'Shell',
+  'bash': 'Shell',
+  'zsh': 'Zsh',
+  'fish': 'Fish',
+  'powershell': 'PowerShell',
+  'ps1': 'PowerShell',
+  'sql': 'SQL',
+  'html': 'HTML',
+  'xml': 'XML',
+  'css': 'CSS',
+  'scss': 'SCSS',
+  'sass': 'Sass',
+  'less': 'Less',
+  'json': 'JSON',
+  'yaml': 'YAML',
+  'yml': 'YAML',
+  'toml': 'TOML',
+  'md': 'Markdown',
+  'markdown': 'Markdown',
+  'dockerfile': 'Dockerfile',
+  'docker': 'Docker',
+  'nginx': 'Nginx',
+  'apache': 'Apache',
+  'vim': 'Vim',
+  'viml': 'VimL',
+  'emacs': 'Emacs Lisp',
+  'elisp': 'Emacs Lisp',
+  'lua': 'Lua',
+  'r': 'R',
+  'scala': 'Scala',
+  'groovy': 'Groovy',
+  'perl': 'Perl',
+  'pl': 'Perl',
+  'dart': 'Dart',
+  'flutter': 'Flutter',
+  'ex': 'Elixir',
+  'elixir': 'Elixir',
+  'exs': 'Elixir',
+  'erl': 'Erlang',
+  'erlang': 'Erlang',
+  'hs': 'Haskell',
+  'haskell': 'Haskell',
+  'fs': 'F#',
+  'fsharp': 'F#',
+  'ocaml': 'OCaml',
+  'ml': 'OCaml',
+  'nim': 'Nim',
+  'julia': 'Julia',
+  'matlab': 'MATLAB',
+  'tex': 'LaTeX',
+  'latex': 'LaTeX',
+  'make': 'Makefile',
+  'makefile': 'Makefile',
+  'cmake': 'CMake',
+  'gradle': 'Gradle',
+  'maven': 'Maven',
+  'pom': 'Maven',
+  'vue': 'Vue',
+  'svelte': 'Svelte',
+  'angular': 'Angular',
+  'next': 'Next.js',
+  'nextjs': 'Next.js',
+  'nuxt': 'Nuxt',
+  'react': 'React',
+  'solid': 'Solid',
+  'astro': 'Astro',
+};
+
+function getLanguageDisplayName(lang: string): string {
+  const normalized = lang.toLowerCase();
+  return LANGUAGE_DISPLAY_NAMES[normalized] || lang;
+}
+
+// Simple token estimation using max(word count, char count / 4)
+// Rough approximation: 1 token ≈ 4 characters for English text
+function estimateTokens(text: string): number {
+  if (!text) return 0;
+  const words = text.split(/\s+/).filter(w => w.length > 0).length;
+  const chars = text.length;
+  return Math.max(words, Math.ceil(chars / 4));
+}
+
+// Parse markdown for code blocks and PR references
 function parseMarkdown(text: string): Array<{ type: 'text' | 'code' | 'pr'; content: string; language?: string; prNumber?: number; prUrl?: string }> {
   const parts: Array<{ type: 'text' | 'code' | 'pr'; content: string; language?: string; prNumber?: number; prUrl?: string }> = [];
 
@@ -71,10 +449,11 @@ function parseMarkdown(text: string): Array<{ type: 'text' | 'code' | 'pr'; cont
 
 // Code block component
 function CodeBlock({ content, language, onCopy }: { content: string; language: string; onCopy: () => void }) {
+  const displayLanguage = getLanguageDisplayName(language);
   return (
     <View style={styles.codeBlockContainer}>
       <View style={styles.codeHeader}>
-        <Text style={styles.codeLanguage}>{language}</Text>
+        <Text style={styles.codeLanguage}>{displayLanguage}</Text>
         <Pressable onPress={onCopy} style={styles.copyButton}>
           <Ionicons name="copy-outline" size={16} color={colors.mutedForeground} />
         </Pressable>
@@ -86,11 +465,19 @@ function CodeBlock({ content, language, onCopy }: { content: string; language: s
 
 // PR reference component
 function PRReference({ prNumber, prUrl }: { prNumber: number; prUrl: string }) {
+  const handlePress = useCallback(() => {
+    if (Platform.OS === 'web') {
+      window.open(prUrl, '_blank');
+    } else {
+      Linking.openURL(prUrl);
+    }
+  }, [prUrl]);
+
   return (
     <View style={styles.prContainer}>
       <Ionicons name="git-pull-request" size={16} color={colors.brand} />
       <Text style={styles.prText}>Pull request #{prNumber} created</Text>
-      <Pressable onPress={() => window.open(prUrl, '_blank')} style={styles.prLink}>
+      <Pressable onPress={handlePress} style={styles.prLink}>
         <Text style={styles.prLinkText}>View PR</Text>
         <Ionicons name="open-outline" size={14} color={colors.brand} />
       </Pressable>
@@ -176,7 +563,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.foreground,
   },
+  tokenCounter: {
+    fontSize: 11,
+    color: colors.mutedForeground,
+    marginLeft: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: colors.muted,
+    borderRadius: 10,
+  },
   newChatButton: {
+    padding: 4,
+  },
+  historyButton: {
     padding: 4,
   },
   repoSelector: {
@@ -320,7 +719,7 @@ const styles = StyleSheet.create({
     padding: 12,
     backgroundColor: 'rgba(34, 197, 94, 0.1)',
     borderRadius: 8,
-    border: 1,
+    borderWidth: 1,
     borderColor: 'rgba(34, 197, 94, 0.3)',
   },
   prText: {
@@ -376,6 +775,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.muted,
     opacity: 0.5,
   },
+  cancelButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.muted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   emptyState: {
     flex: 1,
     alignItems: 'center',
@@ -416,23 +823,33 @@ const styles = StyleSheet.create({
   },
   // Multi-repo modal styles
   modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    position: 'relative',
+  },
+  modalBackdrop: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1000,
   },
   modalContent: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: '-50%' }, { translateY: '-50%' }],
     width: '90%',
     maxWidth: 450,
     maxHeight: '80%',
     backgroundColor: colors.card,
     borderRadius: 12,
     overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -442,6 +859,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  modalCloseButton: {
+    padding: 4,
   },
   modalTitle: {
     fontSize: 18,
@@ -474,6 +894,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  repoCheckboxContainer: {
+    marginRight: 12,
+  },
   repoCheckbox: {
     width: 22,
     height: 22,
@@ -482,7 +905,6 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
   },
   repoCheckboxChecked: {
     backgroundColor: colors.brand,
@@ -567,19 +989,150 @@ const QUICK_ACTIONS = [
   'Refactor...',
 ];
 
-// Checkbox component
-function Checkbox({ checked, onToggle }: { checked: boolean; onToggle: () => void }) {
+// Animated modal component with fade and backdrop handling
+function RepositoryModal({
+  visible,
+  onClose,
+  repositories,
+  selectedRepos,
+  onToggleRepo,
+  onSelectAll,
+  onClearSelection,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  repositories: RepositoryDetail[];
+  selectedRepos: string[];
+  onToggleRepo: (repoName: string) => void;
+  onSelectAll: () => void;
+  onClearSelection: () => void;
+}) {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          tension: 65,
+          friction: 11,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 0.9,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [visible, fadeAnim, scaleAnim]);
+
+  if (!visible) return null;
+
   return (
-    <Pressable
-      onPress={onToggle}
-      style={[styles.repoCheckbox, checked && styles.repoCheckboxChecked]}
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      onRequestClose={onClose}
     >
-      {checked && <Text style={styles.repoCheckboxText}>✓</Text>}
-    </Pressable>
+      <Animated.View style={[styles.modalOverlay, { opacity: fadeAnim }]}>
+        {/* Backdrop - separate from modal content */}
+        <Pressable style={styles.modalBackdrop} onPress={onClose} />
+
+        {/* Modal content - positioned absolutely, sibling to backdrop */}
+        <Animated.View
+          style={[styles.modalContent, { transform: [{ scale: scaleAnim }] }]}
+        >
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select Repositories</Text>
+            <Pressable onPress={onClose} style={styles.modalCloseButton}>
+              <Ionicons name="close" size={24} color={colors.foreground} />
+            </Pressable>
+          </View>
+
+          <View style={styles.modalActions}>
+            <Pressable onPress={onSelectAll} style={styles.modalActionButton}>
+              <Text style={styles.modalActionText}>Select All</Text>
+            </Pressable>
+            <Pressable onPress={onClearSelection} style={styles.modalActionButton}>
+              <Text style={styles.modalActionText}>Clear</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView style={styles.modalList}>
+            {repositories.length === 0 ? (
+              <View style={styles.modalEmpty}>
+                <Ionicons name="git-branch" size={48} color={colors.mutedForeground} />
+                <Text style={[styles.emptyTitle, { marginTop: 12 }]}>No repositories</Text>
+                <Text style={styles.emptySubtitle}>
+                  Install the GitHub App to see your repositories here.
+                </Text>
+              </View>
+            ) : (
+              repositories.map((repo) => {
+                const isSelected = selectedRepos.includes(repo.full_name);
+                return (
+                  <Pressable
+                    key={repo.full_name}
+                    style={styles.repoItem}
+                    onPress={() => onToggleRepo(repo.full_name)}
+                    android_ripple={{ color: colors.border }}
+                  >
+                    <View style={styles.repoCheckboxContainer}>
+                      <View style={[styles.repoCheckbox, isSelected && styles.repoCheckboxChecked]}>
+                        {isSelected && <Text style={styles.repoCheckboxText}>✓</Text>}
+                      </View>
+                    </View>
+                    <View style={styles.repoItemMain}>
+                      <Ionicons name="logo-github" size={20} color={colors.foreground} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.repoItemName}>{repo.full_name}</Text>
+                        {repo.description && (
+                          <Text style={styles.repoItemDesc} numberOfLines={1}>
+                            {repo.description}
+                          </Text>
+                        )}
+                      </View>
+                      {repo.private && (
+                        <Ionicons name="lock-closed" size={14} color={colors.mutedForeground} />
+                      )}
+                    </View>
+                  </Pressable>
+                );
+              })
+            )}
+          </ScrollView>
+
+          {selectedRepos.length > 0 && (
+            <View style={styles.selectedRepos}>
+              <Text style={styles.selectedRepoText}>{selectedRepos.length} selected</Text>
+              <Pressable onPress={onClose} style={styles.modalActionButton}>
+                <Text style={styles.modalActionText}>Done</Text>
+              </Pressable>
+            </View>
+          )}
+        </Animated.View>
+      </Animated.View>
+    </Modal>
   );
 }
 
-export default function ChatScreen() {
+function ChatScreenContent() {
   const { repositories, refresh } = useAppStore();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
@@ -588,12 +1141,52 @@ export default function ChatScreen() {
   const [selectedRepos, setSelectedRepos] = useState<string[]>([]);
   const [showRepoModal, setShowRepoModal] = useState(false);
   const [lastPrompt, setLastPrompt] = useState<string>('');
+  const [canCancel, setCanCancel] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showOfflineQueueModal, setShowOfflineQueueModal] = useState(false);
+  const [showSessionReplay, setShowSessionReplay] = useState(false);
+  const [replaySession, setReplaySession] = useState<SessionData | null>(null);
+  const [sessionHistory, setSessionHistory] = useState<SessionListItem[]>([]);
+  const [isOffline, setIsOffline] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const timeoutRef = useRef<number | null>(null);
 
+  // Track connection status for offline mode
   useEffect(() => {
+    const unsubscribe = syncManager.onConnectionChange((online) => {
+      setIsOffline(!online);
+    });
+    return unsubscribe;
+  }, []);
+
+  // Calculate total tokens used in the session (excludes system messages)
+  // Note: This is an approximation using character estimation, not actual API token usage
+  const totalTokens = useMemo(() => {
+    return messages
+      .filter(msg => msg.role !== 'system') // Exclude system status messages
+      .reduce((sum, msg) => sum + estimateTokens(msg.content), 0);
+  }, [messages]);
+
+  // Load saved session on mount
+  useEffect(() => {
+    const savedSession = loadCurrentSession();
+    if (savedSession && savedSession.messages.length > 0) {
+      setMessages(savedSession.messages as ChatMessage[]);
+      setSessionId(savedSession.sessionId);
+      setSelectedRepos(savedSession.selectedRepos);
+    }
     refresh();
   }, []);
 
+  // Save session whenever messages or session state changes
+  useEffect(() => {
+    if (messages.length > 0 || sessionId) {
+      saveCurrentSession(messages, sessionId, selectedRepos);
+    }
+  }, [messages, sessionId, selectedRepos]);
+
+  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     if (messages.length > 0) {
       setTimeout(() => {
@@ -602,9 +1195,29 @@ export default function ChatScreen() {
     }
   }, [messages]);
 
+  // Cleanup timeout and abort controller on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
   const copyToClipboard = useCallback(async (content: string) => {
-    if (Platform.OS === 'web') {
-      await navigator.clipboard.writeText(content);
+    try {
+      if (Platform.OS === 'web') {
+        await navigator.clipboard.writeText(content);
+      } else {
+        await Clipboard.setStringAsync(content);
+      }
+    } catch (error) {
+      logError(ErrorIds.CLIPBOARD_WRITE_FAILED, error, { contentLength: content.length });
+      // Show user feedback about the failure
+      alert('Failed to copy to clipboard. Please try again.');
     }
   }, []);
 
@@ -614,6 +1227,29 @@ export default function ChatScreen() {
     setLastPrompt('');
     setInputText('');
     setSelectedRepos([]);
+    clearCurrentSession(); // This also resets currentSessionId
+  }, []);
+
+  const cancelRequest = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    setIsProcessing(false);
+    setCanCancel(false);
+
+    // Add a cancellation message
+    const cancelMessage: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'system',
+      content: 'Request cancelled',
+      timestamp: Date.now(),
+    };
+    setMessages((prev) => [...prev, cancelMessage]);
   }, []);
 
   const toggleRepo = useCallback((repoName: string) => {
@@ -636,9 +1272,155 @@ export default function ChatScreen() {
     setSelectedRepos(prev => prev.filter(r => r !== repoName));
   }, []);
 
+  // Auth state
+  const { isAuthenticated } = useAppStore();
+
+  // Session history handlers
+  const openHistoryModal = useCallback(() => {
+    // Require authentication for session history
+    if (!isAuthenticated) {
+      Alert.alert(
+        'Authentication Required',
+        'Please sign in to access your session history.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    // Refresh history when opening modal
+    const history = getSessionHistory();
+    setSessionHistory(history);
+    setShowHistoryModal(true);
+  }, [isAuthenticated]);
+
+  const handleLoadSession = useCallback((sessionId: string) => {
+    const session = loadSessionFromHistory(sessionId);
+    if (!session) {
+      logError(ErrorIds.SESSION_LOAD_FAILED, new Error('Session not found or corrupted'), { sessionId });
+      Alert.alert('Error', 'Could not load this session. It may have been corrupted or deleted.');
+      return;
+    }
+
+    // Load the session
+    setMessages(session.messages as ChatMessage[]);
+    setSessionId(session.sessionId);
+    setSelectedRepos(session.selectedRepos);
+    currentSessionId = session.id; // Restore the persistent session ID
+    setShowHistoryModal(false);
+  }, []);
+
+  const handleDeleteSession = useCallback((sessionId: string) => {
+    const success = deleteSessionFromHistory(sessionId);
+    if (!success) {
+      logError(ErrorIds.SESSION_DELETE_FAILED, new Error('Failed to delete session'), { sessionId });
+      Alert.alert('Error', 'Could not delete this session. Please try again.');
+      return;
+    }
+
+    // Refresh the history list
+    const updatedHistory = getSessionHistory();
+    setSessionHistory(updatedHistory);
+  }, []);
+
+  const handleReplaySession = useCallback((sessionId: string) => {
+    const chatSession = getFullChatSession(sessionId);
+    if (!chatSession) {
+      logError(ErrorIds.SESSION_LOAD_FAILED, new Error('Session not found'), { sessionId });
+      Alert.alert('Error', 'Could not find this session.');
+      return;
+    }
+
+    // Convert ChatSession to SessionData format for replay
+    const events: SessionEvent[] = chatSession.messages.flatMap((msg, idx) => {
+      const baseEvent: SessionEvent = {
+        id: `${sessionId}-${idx}`,
+        type: msg.role === 'user' ? 'status' as SessionEvent['type'] : 'claude_delta' as SessionEvent['type'],
+        timestamp: msg.timestamp,
+        content: msg.content,
+      };
+
+      // For assistant messages, add start/end events
+      if (msg.role === 'assistant') {
+        return [
+          {
+            id: `${sessionId}-${idx}-start`,
+            type: 'claude_start',
+            timestamp: msg.timestamp,
+          } as SessionEvent,
+          baseEvent,
+          {
+            id: `${sessionId}-${idx}-end`,
+            type: 'claude_end',
+            timestamp: msg.timestamp,
+          } as SessionEvent,
+        ];
+      }
+
+      return [baseEvent];
+    });
+
+    const replayData: SessionData = {
+      id: chatSession.id,
+      prompt: chatSession.title,
+      repository: chatSession.selectedRepos.length > 0 ? {
+        url: `https://github.com/${chatSession.selectedRepos[0]}`,
+        name: chatSession.selectedRepos[0],
+      } : undefined,
+      startTime: chatSession.createdAt,
+      endTime: chatSession.updatedAt,
+      status: 'completed',
+      events,
+      metadata: {
+        sessionId: chatSession.sessionId,
+        selectedRepos: chatSession.selectedRepos,
+        messageCount: chatSession.messages.length,
+      },
+    };
+
+    setReplaySession(replayData);
+    setShowSessionReplay(true);
+    setShowHistoryModal(false);
+  }, []);
+
   const sendMessage = async (promptText?: string) => {
     const text = (promptText || inputText).trim();
     if (!text || isProcessing) return;
+
+    // Check offline status - queue message if offline
+    if (isOffline) {
+      // Queue the message for offline sync
+      await offlineQueue.add('session_message', {
+        sessionId,
+        message: text,
+        selectedRepos,
+        timestamp: Date.now(),
+      });
+
+      // Add user message to UI
+      const userMessage: ChatMessage = {
+        id: Date.now().toString(),
+        role: 'user',
+        content: text,
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => [...prev, userMessage]);
+      setInputText('');
+
+      // Add pending indicator
+      const pendingMessage: ChatMessage = {
+        id: `pending-${Date.now()}`,
+        role: 'system',
+        content: 'Message queued. Will send when connection is restored.',
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => [...prev, pendingMessage]);
+
+      return;
+    }
+
+    // Cancel any existing request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -650,29 +1432,60 @@ export default function ChatScreen() {
     setInputText('');
     setLastPrompt(text);
     setIsProcessing(true);
+    setCanCancel(true);
+
+    // Create new abort controller for this request
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
+    // Set up timeout
+    const timeoutId = setTimeout(() => {
+      abortController.abort();
+      setIsProcessing(false);
+      setCanCancel(false);
+      const timeoutMessage: ChatMessage = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `Request timed out after ${REQUEST_TIMEOUT_MS / 1000} seconds. Please try again.`,
+        timestamp: Date.now(),
+        error: true,
+      };
+      setMessages((prev) => [...prev, timeoutMessage]);
+    }, REQUEST_TIMEOUT_MS);
+    timeoutRef.current = timeoutId;
 
     try {
       // If no session, start a new one
       if (!sessionId) {
+        const isMultiRepo = selectedRepos.length > 1;
         const response = await fetch('/interactive/start', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             prompt: text,
-            repositories: selectedRepos.length > 0 ? selectedRepos.map(r => ({
-              url: `https://github.com/${r}`,
-              name: r,
-            })) : undefined,
+            ...(isMultiRepo ? {
+              repositories: selectedRepos.map(r => ({
+                url: `https://github.com/${r}`,
+                name: r,
+              }))
+            } : selectedRepos.length === 1 ? {
+              repository: {
+                url: `https://github.com/${selectedRepos[0]}`,
+                name: selectedRepos[0],
+              }
+            } : {}),
             options: {
               maxTurns: 10,
               permissionMode: 'bypassPermissions',
               createPR: true,
             },
           }),
+          signal: abortController.signal,
         });
 
         if (!response.ok) {
-          throw new Error('Failed to start session');
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `Failed to start session (${response.status})`);
         }
 
         const newSessionId = response.headers.get('X-Session-Id');
@@ -680,38 +1493,93 @@ export default function ChatScreen() {
           setSessionId(newSessionId);
         }
 
-        await processSSEStream(response);
+        await processSSEStream(response, abortController);
       } else {
+        const isMultiRepo = selectedRepos.length > 1;
         const response = await fetch(`/interactive/${sessionId}/message`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: text,
-            repositories: selectedRepos.length > 0 ? selectedRepos.map(r => ({
-              url: `https://github.com/${r}`,
-              name: r,
-            })) : undefined,
+            ...(isMultiRepo ? {
+              repositories: selectedRepos.map(r => ({
+                url: `https://github.com/${r}`,
+                name: r,
+              }))
+            } : selectedRepos.length === 1 ? {
+              repository: {
+                url: `https://github.com/${selectedRepos[0]}`,
+                name: selectedRepos[0],
+              }
+            } : {}),
           }),
+          signal: abortController.signal,
         });
 
         if (!response.ok) {
-          throw new Error('Failed to send message');
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `Failed to send message (${response.status})`);
         }
 
-        await processSSEStream(response);
+        await processSSEStream(response, abortController);
+      }
+
+      // Clear timeout on success
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
       }
     } catch (error) {
-      console.error('Error sending message:', error);
-      const errorMessage: ChatMessage = {
+      // Clear timeout on error
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+
+      // Handle different error types with specific messages
+      let errorMessage = 'Something went wrong. Please try again.';
+      let errorId: string = ErrorIds.CHAT_SEND_UNKNOWN;
+
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          // User cancelled or timeout
+          if (!canCancel) {
+            // This was a timeout (handled above) or user cancelled via cancelRequest
+            return;
+          }
+          // Otherwise it was a user-initiated cancellation
+          errorMessage = `Request timed out after ${REQUEST_TIMEOUT_MS / 1000} seconds. Please check your connection and try again.`;
+          errorId = ErrorIds.CHAT_SEND_TIMEOUT;
+        } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+          errorMessage = 'Network error. Please check your internet connection and try again.';
+          errorId = ErrorIds.CHAT_SEND_NETWORK;
+        } else if (error.message.includes('401') || error.message.includes('403')) {
+          errorMessage = 'Authentication error. Please refresh and try again.';
+          errorId = ErrorIds.CHAT_SEND_AUTH;
+        } else if (error.message.includes('429')) {
+          errorMessage = 'Too many requests. Please wait a moment and try again.';
+          errorId = ErrorIds.CHAT_SEND_RATE_LIMIT;
+        } else {
+          errorMessage = error.message;
+          errorId = ErrorIds.CHAT_SEND_SERVER;
+        }
+      }
+
+      logError(errorId, error);
+
+      const errorMsg: ChatMessage = {
         id: Date.now().toString(),
         role: 'assistant',
-        content: `Something went wrong. ${error instanceof Error ? error.message : 'Unknown error'}`,
+        content: errorMessage,
         timestamp: Date.now(),
         error: true,
+        errorId,
       };
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setIsProcessing(false);
+      setCanCancel(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -721,7 +1589,7 @@ export default function ChatScreen() {
     await sendMessage(lastPrompt);
   }, [lastPrompt, isProcessing, sendMessage]);
 
-  const processSSEStream = async (response: Response) => {
+  const processSSEStream = async (response: Response, abortController: AbortController) => {
     const reader = response.body?.getReader();
     if (!reader) {
       throw new Error('No response body');
@@ -741,19 +1609,12 @@ export default function ChatScreen() {
     setMessages((prev) => [...prev, streamingMessage]);
 
     let currentEventType = '';
-    const streamStartTime = Date.now();
 
     try {
       while (true) {
-        if (Date.now() - streamStartTime > 90000) {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMessageId
-                ? { ...m, isStreaming: false, content: assistantContent || 'Request timed out.' }
-                : m
-            )
-          );
-          break;
+        // Check for abort
+        if (abortController.signal.aborted) {
+          throw new Error('Cancelled');
         }
 
         const { done, value } = await reader.read();
@@ -847,6 +1708,14 @@ export default function ChatScreen() {
                 );
               }
             } catch (e) {
+              // Only ignore if it looks like an incomplete chunk (doesn't end with })
+              const isLikelyIncomplete = !data.trim().endsWith('}');
+
+              if (!isLikelyIncomplete) {
+                // This is a real parse error, not just an incomplete chunk
+                logError(ErrorIds.SSE_PARSE_ERROR, e, { data, eventType: currentEventType });
+              }
+              // Continue - incomplete chunks are expected during SSE streaming
             }
           }
         }
@@ -860,6 +1729,10 @@ export default function ChatScreen() {
         )
       );
     } catch (error) {
+      if (error instanceof Error && error.message === 'Cancelled') {
+        // Request was cancelled, don't add error message
+        return;
+      }
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantMessageId
@@ -882,19 +1755,46 @@ export default function ChatScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.flex1} behavior="padding" keyboardVerticalOffset={0}>
-      <View style={styles.flex1}>
-        <View style={styles.header}>
+      <View style={styles.flex1} accessibilityLabel="Chat screen">
+        <View style={styles.header} accessibilityRole="header">
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Pressable
+              onPress={openHistoryModal}
+              style={styles.historyButton}
+              accessibilityLabel="Session history"
+              accessibilityHint={`Open session history${sessionHistory.length > 0 ? ` with ${sessionHistory.length} sessions` : ''}`}
+              accessibilityRole="button"
+            >
+              <Ionicons name="time-outline" size={24} color={colors.brand} />
+            </Pressable>
             {messages.length > 0 && (
-              <Pressable onPress={startNewChat} style={styles.newChatButton}>
+              <Pressable
+                onPress={startNewChat}
+                style={styles.newChatButton}
+                accessibilityLabel="Start new chat"
+                accessibilityHint="Clears current conversation and starts a new one"
+                accessibilityRole="button"
+              >
                 <Ionicons name="add-circle-outline" size={24} color={colors.brand} />
               </Pressable>
             )}
             <Text style={styles.title}>Chat</Text>
+            {totalTokens > 0 && (
+              <Text
+                style={styles.tokenCounter}
+                accessibilityLabel={`Session tokens used: ${totalTokens}`}
+                accessibilityRole="text"
+              >
+                {totalTokens >= 1000 ? `${(totalTokens / 1000).toFixed(1)}k` : totalTokens} tokens
+              </Text>
+            )}
           </View>
           <Pressable
             style={styles.repoSelector}
             onPress={() => setShowRepoModal(true)}
+            accessibilityLabel={`Select repositories${selectedRepos.length > 0 ? `. ${selectedRepos.length} selected` : ''}`}
+            accessibilityHint="Open repository selection modal"
+            accessibilityRole="button"
           >
             <Ionicons name="git-branch" size={16} color={selectedRepos.length > 0 ? colors.foreground : colors.mutedForeground} />
             <Text style={[styles.repoText, selectedRepos.length === 0 && styles.repoTextPlaceholder]}>
@@ -909,11 +1809,19 @@ export default function ChatScreen() {
 
         {/* Selected repos chips when multiple selected */}
         {selectedRepos.length > 1 && (
-          <View style={styles.selectedRepos}>
-            {selectedRepos.slice(0, 3).map(repo => (
-              <View key={repo} style={styles.selectedRepoChip}>
+          <View
+            style={styles.selectedRepos}
+            accessibilityLabel={`Selected repositories: ${selectedRepos.join(', ')}`}
+            accessibilityRole="text"
+          >
+            {selectedRepos.slice(0, 3).map((repo, index) => (
+              <View key={repo} style={styles.selectedRepoChip} importantForAccessibility="no">
                 <Text style={styles.selectedRepoText}>{repo.split('/')[1]}</Text>
-                <Pressable onPress={() => removeRepo(repo)}>
+                <Pressable
+                  onPress={() => removeRepo(repo)}
+                  accessibilityLabel={`Remove ${repo} from selection`}
+                  accessibilityRole="button"
+                >
                   <Ionicons name="close-circle" size={14} color={colors.brand} />
                 </Pressable>
               </View>
@@ -924,8 +1832,11 @@ export default function ChatScreen() {
           </View>
         )}
 
+        {/* Offline banner */}
+        <OfflineBanner onSyncPress={() => setShowOfflineQueueModal(true)} />
+
         {messages.length === 0 ? (
-          <View style={styles.emptyState}>
+          <View style={styles.emptyState} accessibilityLabel="Empty chat state">
             <Ionicons name="sparkles-outline" size={48} color={colors.mutedForeground} />
             <Text style={styles.emptyTitle}>Start a conversation</Text>
             <Text style={styles.emptySubtitle}>
@@ -941,6 +1852,9 @@ export default function ChatScreen() {
                   key={action}
                   style={styles.quickActionButton}
                   onPress={() => sendMessage(action)}
+                  accessibilityLabel={`Quick action: ${action}`}
+                  accessibilityHint="Sends this prompt to Claude"
+                  accessibilityRole="button"
                 >
                   <Text style={styles.quickActionText}>{action}</Text>
                 </Pressable>
@@ -952,17 +1866,27 @@ export default function ChatScreen() {
             ref={scrollViewRef}
             style={styles.chatContainer}
             contentContainerStyle={styles.messagesList}
+            accessibilityLabel="Chat messages"
           >
-            {messages.map((message) => (
-              <Message
+            {messages.map((message, index) => (
+              <View
                 key={message.id}
-                message={message}
-                onCopy={copyToClipboard}
-                onRetry={message.error ? retryLastMessage : undefined}
-              />
+                accessibilityLabel={`${message.role === 'user' ? 'You' : 'Claude'}: ${message.content.slice(0, 100)}${message.content.length > 100 ? '...' : ''}`}
+                accessibilityRole="text"
+              >
+                <Message
+                  key={message.id}
+                  message={message}
+                  onCopy={copyToClipboard}
+                  onRetry={message.error ? retryLastMessage : undefined}
+                />
+              </View>
             ))}
             {isProcessing && (
-              <View style={styles.messageRow}>
+              <View
+                style={styles.messageRow}
+                accessibilityLabel="Claude is typing"
+              >
                 <View style={[styles.messageBubble, styles.assistantBubble]}>
                   <View style={styles.typingIndicator}>
                     <View style={styles.typingDot} />
@@ -987,94 +1911,94 @@ export default function ChatScreen() {
               editable={!isProcessing}
               onSubmitEditing={() => sendMessage()}
             />
-            <Pressable
-              style={[
-                styles.sendButton,
-                (!inputText.trim() || isProcessing) && styles.sendButtonDisabled,
-              ]}
-              onPress={() => sendMessage()}
-              disabled={!inputText.trim() || isProcessing}
-            >
-              {isProcessing ? (
-                <ActivityIndicator size="small" color="white" />
-              ) : (
-                <Ionicons name="send" size={20} color="white" />
-              )}
-            </Pressable>
+            {canCancel ? (
+              // Show cancel button when request is in progress and can be cancelled
+              <Pressable
+                style={styles.cancelButton}
+                onPress={cancelRequest}
+              >
+                <Ionicons name="close-circle" size={20} color="#ef4444" />
+              </Pressable>
+            ) : (
+              // Show send button when not processing
+              <Pressable
+                style={[
+                  styles.sendButton,
+                  (!inputText.trim() || isProcessing) && styles.sendButtonDisabled,
+                ]}
+                onPress={() => sendMessage()}
+                disabled={!inputText.trim() || isProcessing}
+                pointerEvents={(!inputText.trim() || isProcessing) ? 'none' : 'auto'}
+              >
+                {isProcessing ? (
+                  <ActivityIndicator size="small" color={inputText.trim() ? 'white' : colors.mutedForeground} />
+                ) : (
+                  <Ionicons name="send" size={20} color={inputText.trim() ? 'white' : colors.mutedForeground} />
+                )}
+              </Pressable>
+            )}
           </View>
         </View>
 
         {/* Multi-repo selection modal */}
-        {showRepoModal && (
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Select Repositories</Text>
-                <Pressable onPress={() => setShowRepoModal(false)}>
-                  <Ionicons name="close" size={24} color={colors.foreground} />
-                </Pressable>
-              </View>
+        <RepositoryModal
+          visible={showRepoModal}
+          onClose={() => setShowRepoModal(false)}
+          repositories={repositories}
+          selectedRepos={selectedRepos}
+          onToggleRepo={toggleRepo}
+          onSelectAll={selectAllRepos}
+          onClearSelection={clearRepoSelection}
+        />
 
-              <View style={styles.modalActions}>
-                <Pressable onPress={selectAllRepos} style={styles.modalActionButton}>
-                  <Text style={styles.modalActionText}>Select All</Text>
-                </Pressable>
-                <Pressable onPress={clearRepoSelection} style={styles.modalActionButton}>
-                  <Text style={styles.modalActionText}>Clear</Text>
-                </Pressable>
-              </View>
+        {/* Session history modal */}
+        <SessionHistoryModal
+          visible={showHistoryModal}
+          onClose={() => setShowHistoryModal(false)}
+          onLoadSession={handleLoadSession}
+          onDeleteSession={handleDeleteSession}
+          onReplaySession={handleReplaySession}
+          sessions={sessionHistory}
+        />
 
-              <ScrollView style={styles.modalList}>
-                {repositories.length === 0 ? (
-                  <View style={styles.modalEmpty}>
-                    <Ionicons name="git-branch" size={48} color={colors.mutedForeground} />
-                    <Text style={[styles.emptyTitle, { marginTop: 12 }]}>No repositories</Text>
-                    <Text style={styles.emptySubtitle}>
-                      Install the GitHub App to see your repositories here.
-                    </Text>
-                  </View>
-                ) : (
-                  repositories.map((repo) => {
-                    const isSelected = selectedRepos.includes(repo.full_name);
-                    return (
-                      <Pressable
-                        key={repo.full_name}
-                        style={styles.repoItem}
-                        onPress={() => toggleRepo(repo.full_name)}
-                      >
-                        <Checkbox checked={isSelected} onToggle={() => toggleRepo(repo.full_name)} />
-                        <View style={styles.repoItemMain}>
-                          <Ionicons name="logo-github" size={20} color={colors.foreground} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.repoItemName}>{repo.full_name}</Text>
-                            {repo.description && (
-                              <Text style={styles.repoItemDesc} numberOfLines={1}>
-                                {repo.description}
-                              </Text>
-                            )}
-                          </View>
-                          {repo.private && (
-                            <Ionicons name="lock-closed" size={14} color={colors.mutedForeground} />
-                          )}
-                        </View>
-                      </Pressable>
-                    );
-                  })
-                )}
-              </ScrollView>
-
-              {selectedRepos.length > 0 && (
-                <View style={styles.selectedRepos}>
-                  <Text style={styles.selectedRepoText}>{selectedRepos.length} selected</Text>
-                  <Pressable onPress={() => setShowRepoModal(false)} style={styles.modalActionButton}>
-                    <Text style={styles.modalActionText}>Done</Text>
-                  </Pressable>
-                </View>
-              )}
-            </View>
-          </View>
+        {/* Session replay modal */}
+        {replaySession && (
+          <Modal
+            visible={showSessionReplay}
+            animationType="slide"
+            presentationStyle="pageSheet"
+            onRequestClose={() => setShowSessionReplay(false)}
+          >
+            <SessionReplay
+              session={replaySession}
+              onClose={() => setShowSessionReplay(false)}
+            />
+          </Modal>
         )}
+
+        {/* Offline queue modal */}
+        <Modal
+          visible={showOfflineQueueModal}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setShowOfflineQueueModal(false)}
+        >
+          <OfflineQueue
+            onDismiss={() => setShowOfflineQueueModal(false)}
+          />
+        </Modal>
       </View>
     </KeyboardAvoidingView>
+  );
+}
+
+export default function ChatScreen() {
+  // Track screen views for analytics
+  useScreenTracking('Sessions');
+
+  return (
+    <ErrorBoundary>
+      <ChatScreenContent />
+    </ErrorBoundary>
   );
 }

@@ -98,3 +98,73 @@ export interface SSEEvent {
   sessionId?: string;
   [key: string]: any;
 }
+
+// ============================================================================
+// User Account & Authentication Types
+// ============================================================================
+
+export type UserTier = 'free' | 'pro' | 'enterprise';
+
+export interface UsageLimits {
+  sessionsPerMonth: number;
+  repositories: number;
+  maxTurnsPerSession: number;
+}
+
+export interface UserAccount {
+  id: string;
+  email: string;
+  name: string;
+  tier: UserTier;
+  createdAt: string;
+  updatedAt: string;
+  lastActiveAt: string;
+  usage: {
+    sessionsThisMonth: number;
+    totalSessions: number;
+    repositoryCount: number;
+  };
+  limits: UsageLimits;
+  isEmailVerified?: boolean;
+}
+
+export interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+}
+
+export interface LoginCredentials {
+  email: string;
+  password: string;
+}
+
+export interface RegisterCredentials {
+  email: string;
+  password: string;
+  name: string;
+}
+
+export interface AuthResponse {
+  user: UserAccount;
+  tokens: AuthTokens;
+}
+
+// Default limits for each tier
+export const TIER_LIMITS: Record<UserTier, UsageLimits> = {
+  free: {
+    sessionsPerMonth: 10,
+    repositories: 3,
+    maxTurnsPerSession: 50,
+  },
+  pro: {
+    sessionsPerMonth: 100,
+    repositories: 50,
+    maxTurnsPerSession: 500,
+  },
+  enterprise: {
+    sessionsPerMonth: -1, // unlimited
+    repositories: -1, // unlimited
+    maxTurnsPerSession: -1, // unlimited
+  },
+};

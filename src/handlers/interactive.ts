@@ -8,6 +8,14 @@ import { logWithContext } from '../log';
 import { containerFetch, getRouteFromRequest } from '../fetch';
 import { ensureDOEncryptionKey } from '../index';
 import type { Env, InteractiveSessionState } from '../types';
+import {
+  detectTestMode,
+  addTestModeHeaders,
+  createMockSSEStream,
+  createMockMultiRepoSSEStream,
+  createMockErrorSSEStream,
+  sseGeneratorToStream
+} from '../test_mode';
 
 // ============================================================================
 // Types
@@ -31,12 +39,16 @@ interface StartInteractiveSessionRequest {
     permissionMode?: 'bypassPermissions' | 'required';
     createPR?: boolean;
   };
+  // Test mode options
+  testMode?: 'normal' | 'error' | 'multi-repo';
+  testError?: string;
 }
 
 interface StartInteractiveSessionResponse {
   success: boolean;
   sessionId?: string;
   streamUrl?: string;
+  testMode?: boolean;
   error?: string;
 }
 
@@ -60,29 +72,65 @@ export async function handleStartInteractiveSession(
 ): Promise<Response> {
   logWithContext('INTERACTIVE_WORKER', 'Starting interactive session');
 
+  // Detect test mode
+  const testMode = detectTestMode(request);
+
   try {
     const body: StartInteractiveSessionRequest = await request.json();
 
     // Validate request - prompt is now optional, session can start empty
     if (!body.prompt && !body.repository && !body.repositories) {
-      return Response.json({
+      const response = Response.json({
         success: false,
         error: 'Either prompt or repository (or repositories) must be provided'
       } satisfies StartInteractiveSessionResponse, { status: 400 });
+      return addTestModeHeaders(response, testMode);
     }
 
-    // Check for centralized Claude API key
-    if (!env.ANTHROPIC_API_KEY) {
-      return Response.json({
+    // Check for centralized Claude API key (skip in test mode)
+    if (!env.ANTHROPIC_API_KEY && !testMode.enabled) {
+      const response = Response.json({
         success: false,
         error: 'Claude API key not configured'
       } satisfies StartInteractiveSessionResponse, { status: 400 });
+      return addTestModeHeaders(response, testMode);
     }
 
     // Generate session ID
     const sessionId = generateSessionId();
 
-    // Create session record in DO
+    // If test mode is enabled, return mock SSE stream
+    if (testMode.enabled) {
+      logWithContext('TEST_MODE', 'Returning mock SSE stream', {
+        testType: body.testMode || 'normal',
+        sessionId
+      });
+
+      let streamGenerator: AsyncGenerator<Uint8Array>;
+
+      if (body.testMode === 'error') {
+        streamGenerator = createMockErrorSSEStream(body.testError);
+      } else if (body.testMode === 'multi-repo' && body.repositories) {
+        const repoNames = body.repositories.map(r => r.name);
+        streamGenerator = createMockMultiRepoSSEStream(repoNames);
+      } else {
+        streamGenerator = createMockSSEStream();
+      }
+
+      const response = new Response(sseGeneratorToStream(streamGenerator), {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          'X-Session-Id': sessionId,
+          'X-Test-Mode': 'true'
+        }
+      });
+
+      return addTestModeHeaders(response, testMode);
+    }
+
+    // Normal flow: Create session record in DO
     // Use any to avoid deep type instantiation with DurableObjectNamespace
     const sessionDO = (env.INTERACTIVE_SESSIONS as any).idFromName('session-manager');
     const sessionDOStub = (env.INTERACTIVE_SESSIONS as any).get(sessionDO);
@@ -154,7 +202,7 @@ export async function handleStartInteractiveSession(
     logWithContext('INTERACTIVE_WORKER', 'Starting container for interactive session', {
       sessionId,
       hasRepository: !!body.repository,
-      promptLength: body.prompt.length
+      promptLength: body.prompt?.length || 0
     });
 
     // Start the interactive session in the container
@@ -183,10 +231,11 @@ export async function handleStartInteractiveSession(
         error: errorText
       });
 
-      return Response.json({
+      const response = Response.json({
         success: false,
         error: `Failed to start session: ${errorText}`
       } satisfies StartInteractiveSessionResponse, { status: 500 });
+      return addTestModeHeaders(response, testMode);
     }
 
     // Stream the SSE response directly to the client
@@ -195,7 +244,7 @@ export async function handleStartInteractiveSession(
     });
 
     // Return the SSE stream directly from the container
-    return new Response(containerResponse.body, {
+    const response = new Response(containerResponse.body, {
       headers: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
@@ -204,15 +253,19 @@ export async function handleStartInteractiveSession(
       }
     });
 
+    return addTestModeHeaders(response, testMode);
+
   } catch (error) {
     logWithContext('INTERACTIVE_WORKER', 'Error starting interactive session', {
       error: error instanceof Error ? error.message : String(error)
     });
 
-    return Response.json({
+    const response = Response.json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
     } satisfies StartInteractiveSessionResponse, { status: 500 });
+
+    return addTestModeHeaders(response, testMode);
   }
 }
 
@@ -227,9 +280,13 @@ export async function handleInteractiveRequest(
   const url = new URL(request.url);
   const pathname = url.pathname;
 
+  // Detect test mode
+  const testMode = detectTestMode(request);
+
   logWithContext('INTERACTIVE_WORKER', 'Interactive request received', {
     method: request.method,
-    pathname
+    pathname,
+    testMode: testMode.enabled
   });
 
   // Start interactive session
@@ -240,14 +297,45 @@ export async function handleInteractiveRequest(
   // Send message to active session
   if (pathname.match(/^\/interactive\/[^\/]+\/message$/) && request.method === 'POST') {
     const sessionId = pathname.split('/')[2];
-    return await handleSendMessage(sessionId, request, env);
+    const response = await handleSendMessage(sessionId, request, env);
+    return addTestModeHeaders(response, testMode);
   }
 
   // Session status (optional - for checking active sessions)
   if (pathname === '/interactive/status' && request.method === 'GET') {
     const sessionId = url.searchParams.get('sessionId');
     if (!sessionId) {
-      return Response.json({ error: 'sessionId is required' }, { status: 400 });
+      const response = Response.json({ error: 'sessionId is required' }, { status: 400 });
+      return addTestModeHeaders(response, testMode);
+    }
+
+    // If test mode, return mock status
+    if (testMode.enabled) {
+      const response = Response.json({
+        sessionId,
+        status: 'completed',
+        repository: {
+          url: 'https://github.com/octocat/Hello-World',
+          name: 'octocat/Hello-World',
+          branch: 'main'
+        },
+        currentTurn: 1,
+        createdAt: Date.now() - 60000,
+        lastActivityAt: Date.now() - 10000,
+        messages: [
+          {
+            role: 'user',
+            content: 'Analyze this repository',
+            timestamp: Date.now() - 60000
+          },
+          {
+            role: 'assistant',
+            content: 'I have analyzed the repository and found several areas for improvement...',
+            timestamp: Date.now() - 30000
+          }
+        ]
+      } satisfies InteractiveSessionState);
+      return addTestModeHeaders(response, testMode);
     }
 
     // Check session status with messages from session DO
@@ -258,12 +346,24 @@ export async function handleInteractiveRequest(
     );
     const sessionData = await statusResponse.json() as InteractiveSessionState | null;
 
-    return Response.json(sessionData || { error: 'Session not found' });
+    const response = Response.json(sessionData || { error: 'Session not found' });
+    return addTestModeHeaders(response, testMode);
   }
 
   // End session
   if (pathname.startsWith('/interactive/') && request.method === 'DELETE') {
     const sessionId = pathname.split('/')[2];
+
+    // If test mode, just return success
+    if (testMode.enabled) {
+      const response = Response.json({
+        success: true,
+        message: 'Test mode session ended',
+        sessionId
+      });
+      return addTestModeHeaders(response, testMode);
+    }
+
     const containerName = `interactive-${sessionId}`;
     const id = (env.MY_CONTAINER as any).idFromName(containerName);
     const container = (env.MY_CONTAINER as any).get(id);
@@ -286,11 +386,13 @@ export async function handleInteractiveRequest(
       { containerName, route: '/shutdown' }
     );
 
-    return Response.json({ success: true, message: 'Session ended' });
+    const response = Response.json({ success: true, message: 'Session ended' });
+    return addTestModeHeaders(response, testMode);
   }
 
   // Unknown endpoint
-  return Response.json({ error: 'Unknown interactive endpoint' }, { status: 404 });
+  const response = Response.json({ error: 'Unknown interactive endpoint' }, { status: 404 });
+  return addTestModeHeaders(response, testMode);
 }
 
 // ============================================================================
@@ -475,4 +577,3 @@ async function handleSendMessage(
     }, { status: 500 });
   }
 }
-

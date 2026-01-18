@@ -40,7 +40,7 @@ export function Badge({ label, variant = 'default', style }: BadgeProps) {
       style={[
         styles.badge,
         { backgroundColor: colors.bg },
-        variant === 'outline' && { borderWidth: 1, borderColor: colors.border },
+        variant === 'outline' && 'border' in colors && { borderWidth: 1, borderColor: colors.border },
         style,
       ]}
     >

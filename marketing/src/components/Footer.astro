@@ -1,0 +1,79 @@
+const footerLinks = {
+	product: [
+		{ name: 'Features', href: '#features' },
+		{ name: 'Pricing', href: '#pricing' },
+		{ name: 'Changelog', href: '#changelog' },
+		{ name: 'Roadmap', href: '/roadmap' },
+	],
+	company: [
+		{ name: 'About', href: '/about' },
+		{ name: 'Blog', href: '/blog' },
+		{ name: 'Careers', href: '/careers' },
+		{ name: 'Contact', href: '/contact' },
+	],
+	legal: [
+		{ name: 'Privacy', href: '/privacy' },
+		{ name: 'Terms', href: '/terms' },
+		{ name: 'Security', href: '/security' },
+		{ name: 'Status', href: 'https://status.cloudcode.dev' },
+	],
+};
+
+const currentYear = new Date().getFullYear();
+---
+
+<footer class="border-t border-slate-800 py-16">
+	<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+		<div class="grid sm:grid-cols-2 lg:grid-cols-5 gap-12 mb-12">
+			<!-- Brand -->
+			<div class="lg:col-span-2">
+				<a href="/" class="flex items-center gap-2 font-bold text-xl mb-4">
+					<div class="w-8 h-8 bg-gradient-to-br from-violet-500 to-fuchsia-500 rounded-lg flex items-center justify-center">
+						<i class="ph ph-code text-white text-lg"></i>
+					</div>
+					<span class="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">Cloud Code</span>
+				</a>
+				<p class="text-slate-400 text-sm leading-relaxed mb-4">
+					Remote-first AI coding companion with native mobile apps. Code from anywhere, zero setup required.
+				</p>
+				<div class="flex items-center gap-4">
+					<a href="https://github.com/andrejs1979/cloud-code" class="text-slate-400 hover:text-white transition-colors">
+						<i class="ph ph-github-logo text-xl"></i>
+					</a>
+					<a href="https://twitter.com/cloudcodedev" class="text-slate-400 hover:text-white transition-colors">
+						<i class="ph ph-x-logo text-xl"></i>
+					</a>
+					<a href="https://discord.gg/cloudcode" class="text-slate-400 hover:text-white transition-colors">
+						<i class="ph ph-discord-logo text-xl"></i>
+					</a>
+				</div>
+			</div>
+
+			<!-- Links -->
+			{Object.entries(footerLinks).map(([title, links]) => (
+				<div>
+					<h4 class="font-semibold mb-4 capitalize">{title}</h4>
+					<ul class="space-y-2">
+						{links.map(link => (
+							<li>
+								<a href={link.href} class="text-sm text-slate-400 hover:text-white transition-colors">
+									{link.name}
+								</a>
+							</li>
+						))}
+					</ul>
+				</div>
+			))}
+		</div>
+
+		<!-- Bottom -->
+		<div class="pt-8 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+			<p class="text-sm text-slate-500">
+				© {currentYear} Cloud Code. All rights reserved.
+			</p>
+			<p class="text-sm text-slate-500">
+				Made with ☁️ on Cloudflare Workers
+			</p>
+		</div>
+	</div>
+</footer>

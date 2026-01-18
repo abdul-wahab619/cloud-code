@@ -1,38 +1,162 @@
 {
   "expo": {
-    "name": "Claude Pipeline",
-    "slug": "claude-pipeline",
-    "version": "2.0.0",
+    "name": "Cloud Code",
+    "slug": "cloud-code",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
-    "scheme": "claude-pipeline",
+    "scheme": "cloudcode",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#09090b"
     },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.claudepipeline.app"
+      "bundleIdentifier": "com.cloudcode.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app requires camera access for scanning QR codes and documentation features.",
+        "NSPhotoLibraryUsageDescription": "This app requires photo library access for uploading images and documentation.",
+        "NSFaceIDUsageDescription": "This app uses Face ID for secure authentication to your Cloud Code account.",
+        "NSBiometricLockoutReason": "Too many failed attempts. Please try again later.",
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "cloudcode"
+            ]
+          }
+        ],
+        "UIBackgroundModes": [
+          "remote-notification",
+          "fetch"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "entitlements": {
+        "com.apple.developer.applesignin": []
+      },
+      "bitcode": false,
+      "requireFullScreen": false
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#09090b"
+        "backgroundColor": "#09090b",
+        "monochromeImage": "./assets/adaptive-icon.png"
       },
-      "edgeToEdgeEnabled": true,
-      "package": "com.claudepipeline.app"
+      "package": "com.cloudcode.app",
+      "versionCode": 1,
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "VIBRATE",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "RECEIVE_BOOT_COMPLETED",
+        "SCHEDULE_EXACT_ALARM",
+        "REQUEST_INSTALL_PACKAGES"
+      ],
+      "googleServicesFile": "./google-services.json",
+      "enableJetifier": true,
+      "edgeToEdgeEnabled": true
     },
     "web": {
       "favicon": "./assets/favicon.png",
       "bundler": "metro",
-      "output": "static"
+      "output": "static",
+      "config": {
+        "firebase": {}
+      }
     },
-    "plugins": [],
+    "plugins": [
+      "expo-secure-store",
+      "expo-local-authentication",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#09090b",
+          "sounds": ["./assets/notification.wav"],
+          "defaultChannel": "default"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "backgroundColor": "#09090b",
+          "enableRightToLeft": false
+        }
+      ],
+      [
+        "expo-updates",
+        {
+          "url": "https://u.expo.dev/your-project-id"
+        }
+      ],
+      [
+        "expo-router",
+        {
+          "root": "./app",
+          "origin": false
+        }
+      ],
+    ],
     "experiments": {
-      "typedRoutes": false
+      "typedRoutes": true
+    },
+    "updates": {
+      "url": "https://u.expo.dev/your-project-id",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0,
+      "requestHeaders": {
+        "expo-channel": "main"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "notification": {
+      "icon": "./assets/notification-icon.png",
+      "color": "#09090b",
+      "sounds": ["./assets/notification.wav"],
+      "androidDisplayMode": {
+        "notificationPriority": "high",
+        "badgeCount": true,
+        "lightColor": "#09090b"
+      },
+      "iosDisplayMode": {
+        "badgeCount": true,
+        "sound": true
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "your-project-id-here"
+      }
+    },
+    "hooks": {
+      "postPublish": [
+        {
+          "file": "sentry-expo/upload-sourcemaps",
+          "config": {
+            "organization": "cloud-code",
+            "project": "cloud-code-mobile"
+          }
+        }
+      ]
     }
   }
 }

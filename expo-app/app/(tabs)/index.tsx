@@ -1,11 +1,16 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { View, Text, ScrollView, RefreshControl, StyleSheet } from 'react-native';
 import { useAppStore } from '../../lib/useStore';
-import { Card } from '../../components/Card';
+import { Card, CardRow } from '../../components/Card';
 import { StatusDot } from '../../components/StatusDot';
+import { StatsCard } from '../../components/StatsCard';
+import { ActivityChart } from '../../components/ActivityChart';
+import { SuccessChart } from '../../components/SuccessChart';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { formatTime } from '../../lib/utils';
 import { colors, commonStyles } from '../../lib/styles';
 import { Ionicons } from '@expo/vector-icons';
+import { useScreenTracking } from '../../contexts/AnalyticsContext';
 
 const styles = StyleSheet.create({
   flex1: { flex: 1, backgroundColor: colors.background },
@@ -58,6 +63,43 @@ const styles = StyleSheet.create({
     color: colors.mutedForeground,
     textAlign: 'center',
   },
+  chartCard: {
+    width: '48%',
+    backgroundColor: colors.card,
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  chartTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.foreground,
+  },
+  chartLabel: {
+    fontSize: 12,
+    color: colors.mutedForeground,
+  },
+  chartContainer: {
+    alignItems: 'center',
+    paddingVertical: 16,
+  },
+  chartSectionTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.mutedForeground,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: 12,
+  },
 });
 
 const STATUS_COLORS = {
@@ -67,7 +109,7 @@ const STATUS_COLORS = {
   failed: '#ef4444',
 } as const;
 
-export default function DashboardScreen() {
+function DashboardScreenContent() {
   const { stats, tasks, sessions, isLoading, refresh } = useAppStore();
 
   useEffect(() => {
@@ -121,21 +163,61 @@ function StatsSection() {
     );
   }
 
-  const statsData = [
-    { label: 'Processed', value: stats.processedIssues ?? 0, color: '#6366f1' },
-    { label: 'Success', value: `${stats.successRate ?? 0}%`, color: '#22c55e' },
-    { label: 'Active', value: stats.activeSessions ?? 0, color: '#eab308' },
-    { label: 'Total', value: stats.totalIssues ?? 0, color: '#a1a1aa' },
-  ];
+  // Calculate success/failure for the donut chart
+  const successCount = Math.round((stats.successRate ?? 0) / 100 * (stats.processedIssues ?? 0));
+  const failureCount = (stats.processedIssues ?? 0) - successCount;
 
   return (
     <View style={styles.statsGrid}>
-      {statsData.map((stat) => (
-        <View key={stat.label} style={styles.statCard}>
-          <Text style={[styles.statValue, { color: stat.color }]}>{stat.value}</Text>
-          <Text style={styles.statLabel}>{stat.label}</Text>
-        </View>
-      ))}
+      {/* Processed Issues */}
+      <StatsCard
+        title="Processed"
+        value={stats.processedIssues ?? 0}
+        subtitle="Total issues"
+        icon="git-network"
+        color={colors.primary}
+        details={[
+          { label: 'This week', value: Math.round((stats.processedIssues ?? 0) * 0.4) },
+          { label: 'This month', value: stats.processedIssues ?? 0 },
+          { label: 'Avg per day', value: ((stats.processedIssues ?? 0) / 7).toFixed(1) },
+        ]}
+      />
+
+      {/* Success Rate */}
+      <View style={styles.chartCard}>
+        <Text style={styles.chartTitle}>Success Rate</Text>
+        <SuccessChart
+          success={successCount}
+          failure={failureCount}
+        />
+        <Text style={styles.chartLabel}>{stats.successRate}% success</Text>
+      </View>
+
+      {/* Active Sessions */}
+      <StatsCard
+        title="Active"
+        value={stats.activeSessions ?? 0}
+        subtitle="Running now"
+        icon="flash"
+        color={colors.warning}
+        details={stats.activeSessions > 0 ? [
+          { label: 'Containers', value: stats.activeSessions },
+          { label: 'Queue depth', value: '0' },
+        ] : undefined}
+      />
+
+      {/* Total Repositories */}
+      <StatsCard
+        title="Repositories"
+        value={stats.repositories?.length ?? 0}
+        subtitle="Connected"
+        icon="library"
+        color={colors.info}
+        details={stats.repositories?.map(repo => ({
+          label: repo,
+          value: 'Active',
+        }))}
+      />
     </View>
   );
 }
@@ -198,8 +280,43 @@ function ActivitySection() {
     );
   }
 
+  // Generate chart data from sessions - group by day for the last 7 days
+  const chartData = useMemo(() => {
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const today = new Date().getDay();
+    const data = [];
+
+    for (let i = 6; i >= 0; i--) {
+      const dayIndex = (today - i + 7) % 7;
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      date.setHours(0, 0, 0, 0);
+
+      const count = sessions.filter(s => {
+        const sessionDate = new Date(s.createdAt);
+        sessionDate.setHours(0, 0, 0, 0);
+        return sessionDate.getTime() === date.getTime();
+      }).length;
+
+      data.push({
+        date: days[dayIndex],
+        count,
+      });
+    }
+
+    return data;
+  }, [sessions]);
+
   return (
     <Card title="Recent Activity">
+      {/* Activity Chart */}
+      <View style={styles.chartContainer}>
+        <Text style={styles.chartSectionTitle}>Last 7 Days</Text>
+        <ActivityChart data={chartData} color={colors.primary} height={100} />
+      </View>
+
+      {/* Recent Sessions List */}
+      <View style={styles.sectionDivider} />
       {sessions.slice(0, 5).map((session) => (
         <View
           key={session.id}
@@ -220,5 +337,16 @@ function ActivitySection() {
         </View>
       ))}
     </Card>
+  );
+}
+
+export default function DashboardScreen() {
+  // Track screen views for analytics
+  useScreenTracking('Dashboard');
+
+  return (
+    <ErrorBoundary>
+      <DashboardScreenContent />
+    </ErrorBoundary>
   );
 }

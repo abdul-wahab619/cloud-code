@@ -1,0 +1,115 @@
+const plans = [
+	{
+		name: 'Free',
+		price: '$0',
+		period: 'forever',
+		description: 'Perfect for trying out Cloud Code.',
+		features: [
+			'10 sessions per month',
+			'Up to 3 repositories',
+			'Basic Claude (Sonnet) access',
+			'Community support',
+			'7-day session history'
+		],
+		cta: 'Get Started Free',
+		highlight: false
+	},
+	{
+		name: 'Pro',
+		price: '$9',
+		period: '/month',
+		description: 'For developers who need more power.',
+		features: [
+			'Unlimited sessions',
+			'Unlimited repositories',
+			'Advanced Claude (Opus) access',
+			'Priority support',
+			'Unlimited session history',
+			'Session replay & sharing',
+			'Branch selection',
+			'Push notifications'
+		],
+		cta: 'Start 14-Day Trial',
+		highlight: true
+	},
+	{
+		name: 'Team',
+		price: '$29',
+		period: '/user/month',
+		description: 'Collaborate with your entire team.',
+		features: [
+			'Everything in Pro',
+			'Shared team workspaces',
+			'Collaborative sessions',
+			'Admin dashboard',
+			'SSO & SAML',
+			'Audit logs',
+			'Custom integrations',
+			'Dedicated support'
+		],
+		cta: 'Contact Sales',
+		highlight: false
+	},
+];
+---
+
+<section id="pricing" class="py-24 relative">
+	<!-- Background -->
+	<div class="absolute inset-0 bg-[radial-gradient(ellipse_100%_50%_at_80%_0%,rgba(255,100,200,0.06),transparent)]"></div>
+
+	<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
+		<!-- Section Header -->
+		<div class="text-center mb-16">
+			<h2 class="text-3xl sm:text-4xl md:text-5xl font-bold mb-4">
+				Simple, Transparent
+				<span class="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">Pricing</span>
+			</h2>
+			<p class="text-lg text-slate-400 max-w-2xl mx-auto">
+				Start free, upgrade when you need more. No credit card required.
+			</p>
+		</div>
+
+		<!-- Pricing Cards -->
+		<div class="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+			{plans.map((plan) => (
+				<div class={`relative p-8 rounded-3xl ${
+					plan.highlight
+						? 'bg-gradient-to-b from-violet-600/20 to-fuchsia-600/20 border-2 border-violet-500/50 shadow-xl shadow-violet-500/10 scale-105'
+						: 'bg-slate-900/50 border border-slate-800'
+				}`}>
+					{plan.highlight && (
+						<div class="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 bg-gradient-to-r from-violet-500 to-fuchsia-500 rounded-full text-sm font-semibold">
+							Most Popular
+						</div>
+					)}
+
+					<div class="text-center mb-8">
+						<h3 class="text-xl font-semibold mb-2">{plan.name}</h3>
+						<p class="text-slate-400 text-sm mb-4">{plan.description}</p>
+						<div class="flex items-baseline justify-center gap-1">
+							<span class="text-4xl font-bold">{plan.price}</span>
+							<span class="text-slate-400">{plan.period}</span>
+						</div>
+					</div>
+
+					<ul class="space-y-3 mb-8">
+						{plan.features.map(feature => (
+							<li class="flex items-start gap-3 text-sm">
+								<i class="ph ph-check-circle text-green-400 text-lg flex-shrink-0 mt-0.5"></i>
+								<span class="text-slate-300">{feature}</span>
+							</li>
+						))}
+					</ul>
+
+					<a href="#download" class={`block w-full py-3 rounded-xl font-semibold text-center transition-all ${
+						plan.highlight
+							? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white'
+							: 'bg-slate-800 hover:bg-slate-700 text-white'
+					}`}>
+						{plan.cta}
+					</a>
+				</div>
+			))}
+		</div>
+	</div>
+</section>

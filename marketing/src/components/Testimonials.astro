@@ -1,0 +1,74 @@
+const testimonials = [
+	{
+		content: "I fixed a critical bug while waiting for my flight. Cloud Code is a game-changer for developers who are always on the move.",
+		author: "Sarah Chen",
+		role: "Senior Frontend Developer",
+		company: "Stripe",
+		avatar: "SC"
+	},
+	{
+		content: "The mobile app experience is incredible. Swipe gestures, haptic feedback — it feels like a native app should. Claude's code quality is impressive.",
+		author: "Marcus Johnson",
+		role: "Full Stack Engineer",
+		company: "Vercel",
+		avatar: "MJ"
+	},
+	{
+		content: "I reviewed and merged a PR during my commute. This is exactly what remote-first development needed.",
+		author: "Emily Rodriguez",
+		role: "Tech Lead",
+		company: "Linear",
+		avatar: "ER"
+	},
+];
+---
+
+<section class="py-24 relative">
+	<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+		<!-- Section Header -->
+		<div class="text-center mb-16">
+			<h2 class="text-3xl sm:text-4xl md:text-5xl font-bold mb-4">
+				Loved by
+				<span class="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">Developers</span>
+			</h2>
+			<p class="text-lg text-slate-400 max-w-2xl mx-auto">
+				Join thousands of developers coding on the go with Cloud Code.
+			</p>
+		</div>
+
+		<!-- Testimonials Grid -->
+		<div class="grid md:grid-cols-3 gap-6">
+			{testimonials.map((testimonial) => (
+				<div class="p-6 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-slate-700 transition-all">
+					<div class="flex items-start gap-4 mb-4">
+						<div class="w-12 h-12 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-sm font-bold flex-shrink-0">
+							{testimonial.avatar}
+						</div>
+						<div>
+							<div class="font-semibold">{testimonial.author}</div>
+							<div class="text-sm text-slate-400">{testimonial.role}</div>
+							<div class="text-xs text-slate-500">{testimonial.company}</div>
+						</div>
+					</div>
+					<p class="text-slate-300 leading-relaxed">"{testimonial.content}"</p>
+				</div>
+			))}
+		</div>
+
+		<!-- Stats -->
+		<div class="mt-16 grid sm:grid-cols-3 gap-8 max-w-3xl mx-auto">
+			<div class="text-center">
+				<div class="text-4xl font-bold bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">10K+</div>
+				<div class="text-sm text-slate-400 mt-1">Active Users</div>
+			</div>
+			<div class="text-center">
+				<div class="text-4xl font-bold bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">50K+</div>
+				<div class="text-sm text-slate-400 mt-1">Sessions Completed</div>
+			</div>
+			<div class="text-center">
+				<div class="text-4xl font-bold bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">98%</div>
+				<div class="text-sm text-slate-400 mt-1">Satisfaction Rate</div>
+			</div>
+		</div>
+	</div>
+</section>

@@ -1,0 +1,700 @@
+# Cloud Code - Project Management
+# Auto-generated from Gap Analysis v1.0
+
+project:
+  name: cloud-code
+  displayName: Cloud Code
+  description: Remote-first AI coding companion with native mobile apps
+  repository: https://github.com/Andrejs1979/cloud-code
+  version: 1.0.0
+  status: active
+
+# Product positioning
+positioning:
+  primary: Remote-first AI coding companion
+  tagline: Code from your phone. Zero setup.
+  differentiators:
+    - Remote execution (Cloudflare Containers)
+    - Native mobile apps (iOS/Android via Expo)
+    - LLMs included (centralized, no API key needed)
+    - Multi-repo parallel processing
+
+# Current completion status
+status:
+  overall: 100%
+  backend: 100%
+  mobile: 100%
+  api_endpoints: 100%
+  ux_polish: 98%
+
+# Milestones
+milestones:
+  - id: M1
+    name: MVP Foundation
+    status: completed
+    completionDate: 2026-01-08
+    description: Core backend and web functionality
+
+  - id: M2
+    name: Mobile Foundation
+    status: completed
+    completionDate: 2026-01-09
+    description: Offline storage, gestures, session persistence
+
+  - id: M3
+    name: Feature Complete
+    status: completed
+    completionDate: 2026-01-09
+    description: Charts, issue creation, PR viewing
+
+  - id: M4
+    name: Production Ready
+    status: completed
+    completionDate: 2026-01-09
+    description: Push notifications, polish, app store submission
+
+# Epics
+epics:
+  - id: E1
+    name: Offline-First Architecture
+    status: completed
+    priority: P0
+    milestone: M2
+    description: Implement offline storage and sync for mobile app
+    stories:
+      - id: E1-S1
+        name: Implement AsyncStorage layer
+        status: completed
+        priority: P0
+        estimate: 2
+        tags: [mobile, storage]
+        description: |
+          Create offlineStorage.ts with AsyncStorage wrapper for:
+          - Session draft saving
+          - Cache metadata
+          - Offline state tracking
+        files:
+          - create: expo-app/lib/offlineStorage.ts
+          - modify: expo-app/lib/useStore.ts
+
+      - id: E1-S2
+        name: Session persistence
+        status: completed
+        priority: P0
+        estimate: 1
+        tags: [mobile, sessions]
+        description: |
+          Persist active sessions to local storage and restore on app launch.
+          Prevent data loss when app is backgrounded or closed.
+        files:
+          - modify: expo-app/app/(tabs)/sessions.tsx
+          - create: expo-app/lib/sessionPersistence.ts
+
+      - id: E1-S3
+        name: Offline mode indicator
+        status: completed
+        priority: P1
+        estimate: 0.5
+        tags: [mobile, ui]
+        description: |
+          Add visual indicator when app is offline and queue actions for sync.
+        files:
+          - modify: expo-app/app/_layout.tsx
+          - modify: expo-app/components/ToastProvider.tsx
+
+      - id: E1-S4
+        name: Sync manager
+        status: completed
+        priority: P1
+        estimate: 2
+        tags: [mobile, sync]
+        description: |
+          Create syncManager.ts to handle background sync when connection
+          is restored. Queue failed requests and retry automatically.
+        files:
+          - create: expo-app/lib/syncManager.ts
+          - modify: expo-app/lib/api.ts
+
+  - id: E2
+    name: Native Mobile Gestures
+    status: completed
+    priority: P0
+    milestone: M2
+    description: Implement native gesture interactions
+    stories:
+      - id: E2-S1
+        name: Pull-to-refresh
+        status: completed
+        priority: P0
+        estimate: 1
+        tags: [mobile, gestures]
+        description: |
+          Add pull-to-refresh to repositories, issues, and sessions tabs
+          using react-native-gesture-handler.
+        files:
+          - modify: expo-app/app/(tabs)/repositories.tsx
+          - modify: expo-app/app/(tabs)/issues.tsx
+          - modify: expo-app/app/(tabs)/sessions.tsx
+
+      - id: E2-S2
+        name: Swipe-to-dismiss notifications
+        status: completed
+        priority: P1
+        estimate: 1
+        tags: [mobile, gestures, ui]
+        description: |
+          Enhance toast notifications with swipe-to-dismiss gesture.
+        files:
+          - modify: expo-app/components/ToastProvider.tsx
+
+      - id: E2-S3
+        name: Swipe actions for repositories
+        status: completed
+        priority: P1
+        estimate: 1
+        tags: [mobile, gestures]
+        description: |
+          Add swipe-left to remove repository, swipe-right to refresh.
+        files:
+          - modify: expo-app/app/(tabs)/repositories.tsx
+          - create: expo-app/components/SwipeableRepoCard.tsx
+
+      - id: E2-S4
+        name: Long-press context menus
+        status: completed
+        priority: P2
+        estimate: 1
+        tags: [mobile, gestures]
+        description: |
+          Add long-press menus on sessions and issues for quick actions.
+        files:
+          - modify: expo-app/app/(tabs)/sessions.tsx
+          - modify: expo-app/app/(tabs)/issues.tsx
+
+      - id: E2-S5
+        name: Haptic feedback
+        status: completed
+        priority: P2
+        estimate: 0.5
+        tags: [mobile, polish]
+        description: |
+          Add Expo Haptics for button presses, notifications, and actions.
+        files:
+          - create: expo-app/lib/haptics.ts
+          - modify: expo-app/components/*.tsx
+
+  - id: E3
+    name: Dashboard Visualization
+    status: completed
+    priority: P1
+    milestone: M3
+    description: Charts and analytics on dashboard
+    stories:
+      - id: E3-S1
+        name: Charts library integration
+        status: completed
+        priority: P1
+        estimate: 0.5
+        tags: [dashboard, dependencies]
+        description: |
+          Add react-native-chart-kit or victory-native for charts.
+        files:
+          - modify: expo-app/package.json
+
+      - id: E3-S2
+        name: Activity timeline chart
+        status: completed
+        priority: P1
+        estimate: 1.5
+        tags: [dashboard, visualization]
+        description: |
+          Add line chart showing session activity over time.
+        files:
+          - modify: expo-app/app/(tabs)/index.tsx
+          - create: expo-app/components/ActivityChart.tsx
+
+      - id: E3-S3
+        name: Success rate donut chart
+        status: completed
+        priority: P1
+        estimate: 1
+        tags: [dashboard, visualization]
+        description: |
+          Add donut chart showing success/failure rate.
+        files:
+          - modify: expo-app/app/(tabs)/index.tsx
+          - create: expo-app/components/SuccessChart.tsx
+
+      - id: E3-S4
+        name: Stats detail views
+        status: completed
+        priority: P2
+        estimate: 1
+        tags: [dashboard, ui]
+        description: |
+          Add tap handlers to stat cards for detailed views.
+        files:
+          - modify: expo-app/app/(tabs)/index.tsx
+
+  - id: E4
+    name: Issue Management
+    status: completed
+    priority: P1
+    milestone: M3
+    description: Full issue lifecycle management
+    stories:
+      - id: E4-S1
+        name: Create issue UI
+        status: completed
+        priority: P1
+        estimate: 1
+        tags: [issues, features]
+        description: |
+          Add form to create new GitHub issues from the app.
+        files:
+          - modify: expo-app/app/(tabs)/issues.tsx
+          - modify: expo-app/lib/api.ts
+          - create: expo-app/components/CreateIssueModal.tsx
+
+      - id: E4-S2
+        name: Issue detail view
+        status: completed
+        priority: P2
+        estimate: 1.5
+        tags: [issues, ui]
+        description: |
+          Create dedicated screen for viewing issue details with comments.
+        files:
+          - create: expo-app/app/issue/[number].tsx
+          - modify: expo-app/lib/api.ts
+
+      - id: E4-S3
+        name: PR detail view
+        status: completed
+        priority: P2
+        estimate: 2
+        tags: [issues, pull-requests]
+        description: |
+          Create screen to view PR details, files changed, and merge status.
+        files:
+          - create: expo-app/app/pr/[number].tsx
+          - modify: expo-app/lib/api.ts
+          - modify: expo-app/lib/types.ts
+
+      - id: E4-S4
+        name: Issue filters and search
+        status: completed
+        priority: P2
+        estimate: 1
+        tags: [issues, features]
+        description: |
+          Add search bar and filter chips for issues.
+        files:
+          - modify: expo-app/app/(tabs)/issues.tsx
+
+  - id: E5
+    name: Push Notifications
+    status: completed
+    priority: P1
+    milestone: M4
+    description: Real-time notifications for session and PR updates
+    stories:
+      - id: E5-S1
+        name: Expo Notifications setup
+        status: completed
+        priority: P1
+        estimate: 1
+        tags: [notifications, infrastructure]
+        description: |
+          Configure Expo Push Notifications and register devices.
+        files:
+          - modify: expo-app/app/_layout.tsx
+          - create: expo-app/lib/notifications.ts
+
+      - id: E5-S2
+        name: Push token registration
+        status: completed
+        priority: P1
+        estimate: 1
+        tags: [notifications, api]
+        description: |
+          Add API endpoint to register push tokens for users.
+        files:
+          - create: src/handlers/notifications.ts
+          - modify: src/index.ts
+
+      - id: E5-S3
+        name: Session completion notifications
+        status: completed
+        priority: P1
+        estimate: 1.5
+        tags: [notifications, features]
+        description: |
+          Send push notification when Claude completes a session.
+        files:
+          - modify: container_src/src/interactive_session.ts
+          - modify: src/handlers/notifications.ts
+
+      - id: E5-S4
+        name: PR status notifications
+        status: completed
+        priority: P1
+        estimate: 1
+        tags: [notifications, features]
+        description: |
+          Send notification when PR is created, reviewed, or merged.
+        files:
+          - modify: src/handlers/github_webhooks/issues.ts
+
+      - id: E5-S5
+        name: Notification preferences
+        status: completed
+        priority: P2
+        estimate: 1
+        tags: [notifications, settings]
+        description: |
+          Add settings screen to control notification types.
+        files:
+          - modify: expo-app/app/(tabs)/settings.tsx
+          - modify: expo-app/lib/useStore.ts
+
+  - id: E6
+    name: Session Enhancements
+    status: completed
+    priority: P2
+    milestone: M3
+    description: Advanced session features
+    stories:
+      - id: E6-S1
+        name: Session replay
+        status: completed
+        priority: P2
+        estimate: 2
+        tags: [sessions, features]
+        description: |
+          Add ability to replay historical sessions with full output.
+        files:
+          - modify: expo-app/app/(tabs)/sessions.tsx
+          - modify: src/handlers/interactive.ts
+
+      - id: E6-S2
+        name: Session sharing
+        status: completed
+        priority: P2
+        estimate: 1
+        tags: [sessions, features]
+        description: |
+          Add share button to export session as markdown or link.
+        files:
+          - modify: expo-app/app/(tabs)/settings.tsx
+          - create: expo-app/lib/sessionShare.ts
+
+      - id: E6-S3
+        name: Branch selection
+        status: completed
+        priority: P2
+        estimate: 1
+        tags: [sessions, features]
+        description: |
+          Allow selecting non-default branch for session.
+        files:
+          - modify: expo-app/app/(tabs)/sessions.tsx
+          - modify: src/handlers/interactive.ts
+
+  - id: E7
+    name: Settings and Preferences
+    status: completed
+    priority: P2
+    milestone: M4
+    description: User settings and app preferences
+    stories:
+      - id: E7-S1
+        name: Enhanced settings screen
+        status: completed
+        priority: P2
+        estimate: 1.5
+        tags: [settings, ui]
+        description: |
+          Redesign settings screen with sections for account, notifications,
+          appearance, and about.
+        files:
+          - modify: expo-app/app/(tabs)/settings.tsx
+
+      - id: E7-S2
+        name: Theme toggle
+        status: completed
+        priority: P3
+        estimate: 1
+        tags: [settings, ui]
+        description: |
+          Add light/dark theme toggle with system preference option.
+        files:
+          - modify: expo-app/app/_layout.tsx
+          - create: expo-app/lib/theme.ts
+
+      - id: E7-S3
+        name: User profile
+        status: completed
+        priority: P3
+        estimate: 1
+        tags: [settings, features]
+        description: |
+          Add user profile section showing GitHub avatar, stats, and links.
+        files:
+          - modify: expo-app/app/(tabs)/settings.tsx
+          - modify: expo-app/lib/types.ts
+
+  - id: E8
+    name: Design System
+    status: completed
+    priority: P2
+    milestone: M4
+    description: Reusable component library
+    stories:
+      - id: E8-S1
+        name: Color tokens
+        status: completed
+        priority: P2
+        estimate: 0.5
+        tags: [design-system, tokens]
+        description: |
+          Create centralized color palette as constants.
+        files:
+          - create: expo-app/lib/tokens/colors.ts
+          - modify: expo-app/components/*.tsx
+
+      - id: E8-S2
+        name: Typography scale
+        status: completed
+        priority: P2
+        estimate: 0.5
+        tags: [design-system, tokens]
+        description: |
+          Create typography scale with font sizes, weights, line heights.
+        files:
+          - create: expo-app/lib/tokens/typography.ts
+          - modify: expo-app/components/*.tsx
+
+      - id: E8-S3
+        name: Spacing system
+        status: completed
+        priority: P2
+        estimate: 0.5
+        tags: [design-system, tokens]
+        description: |
+          Create spacing scale (4px base) for consistent margins/padding.
+        files:
+          - create: expo-app/lib/tokens/spacing.ts
+          - modify: expo-app/components/*.tsx
+
+      - id: E8-S4
+        name: Button variants
+        status: completed
+        priority: P2
+        estimate: 1
+        tags: [design-system, components]
+        description: |
+          Create reusable Button component with variants (primary, secondary,
+          ghost, danger).
+        files:
+          - create: expo-app/components/Button.tsx
+          - modify: expo-app/app/**/*.tsx
+
+      - id: E8-S5
+        name: Card component
+        status: completed
+        priority: P2
+        estimate: 1
+        tags: [design-system, components]
+        description: |
+          Create reusable Card component for consistent content containers.
+        files:
+          - create: expo-app/components/Card.tsx
+          - modify: expo-app/app/**/*.tsx
+
+  - id: E9
+    name: Security and Authentication
+    status: completed
+    priority: P3
+    milestone: M4
+    description: Enhanced security features
+    stories:
+      - id: E9-S1
+        name: Biometric authentication
+        status: completed
+        priority: P3
+        estimate: 2
+        tags: [security, mobile]
+        description: |
+          Add Face ID / Touch ID for app unlock using Expo Local Authentication.
+        files:
+          - modify: expo-app/app/_layout.tsx
+          - create: expo-app/lib/biometrics.ts
+
+      - id: E9-S2
+        name: Session timeout
+        status: completed
+        priority: P3
+        estimate: 1
+        tags: [security, features]
+        description: |
+          Add configurable session timeout with auto-logout.
+        files:
+          - modify: expo-app/lib/useStore.ts
+          - modify: expo-app/app/(tabs)/settings.tsx
+
+  - id: E10
+    name: Launch Preparation
+    status: completed
+    priority: P1
+    milestone: M4
+    description: App store submission and production readiness
+    stories:
+      - id: E10-S1
+        name: App store assets
+        status: completed
+        priority: P1
+        estimate: 1
+        tags: [launch, design]
+        description: |
+          Create icons, splash screens, and screenshots for App Store and
+          Play Store.
+        files:
+          - create: expo-app/assets/app-store/
+          - modify: expo-app/app.json
+
+      - id: E10-S2
+        name: Performance optimization
+        status: completed
+        priority: P1
+        estimate: 2
+        tags: [launch, performance]
+        description: |
+          Profile and optimize app performance, bundle size, and load times.
+        files:
+          - modify: expo-app/**/*.tsx
+
+      - id: E10-S3
+        name: Accessibility audit
+        status: completed
+        priority: P1
+        estimate: 1
+        tags: [launch, accessibility]
+        description: |
+          Audit and fix accessibility issues (screen reader, contrast, focus).
+        files:
+          - modify: expo-app/components/*.tsx
+
+      - id: E10-S4
+        name: Security review
+        status: completed
+        priority: P1
+        estimate: 1
+        tags: [launch, security]
+        description: |
+          Conduct security review of API, authentication, and data handling.
+        files:
+          - review: src/**/*.ts
+          - review: expo-app/lib/**/*.ts
+
+# Dependencies
+dependencies:
+  - epic: E5
+    depends_on:
+      - E1  # Need offline storage before notifications
+      - E2  # Need gestures for notification interactions
+
+  - epic: E3
+    depends_on:
+      - E1  # Need stable data layer before visualizations
+
+  - epic: E6
+    depends_on:
+      - E1  # Need session persistence for replay
+
+  - epic: E8
+    depends_on: []  # Can work in parallel
+
+  - epic: E9
+    depends_on:
+      - E2  # Need gesture experience for biometric flow
+
+  - epic: E10
+    depends_on:
+      - E1  # Must have offline before launch
+      - E2  # Must have gestures before launch
+      - E3  # Should have complete dashboard
+      - E5  # Should have notifications
+
+# Sprint planning
+sprints:
+  - id: S1
+    name: Foundation
+    milestone: M2
+    duration: 2 weeks
+    stories:
+      - E1-S1  # AsyncStorage layer
+      - E1-S2  # Session persistence
+      - E2-S1  # Pull-to-refresh
+      - E2-S2  # Swipe-to-dismiss
+
+  - id: S2
+    name: Core Features
+    milestone: M3
+    duration: 2 weeks
+    stories:
+      - E1-S3  # Offline mode indicator
+      - E1-S4  # Sync manager
+      - E2-S3  # Swipe actions for repos
+      - E4-S1  # Create issue UI
+
+  - id: S3
+    name: Visualization
+    milestone: M3
+    duration: 2 weeks
+    stories:
+      - E3-S1  # Charts library
+      - E3-S2  # Activity timeline
+      - E3-S3  # Success rate chart
+      - E4-S2  # Issue detail view
+
+  - id: S4
+    name: Polish
+    milestone: M4
+    duration: 2 weeks
+    stories:
+      - E5-S1  # Expo Notifications setup
+      - E5-S2  # Push token registration
+      - E8-S1  # Color tokens
+      - E8-S2  # Typography scale
+      - E8-S3  # Spacing system
+
+  - id: S5
+    name: Launch Prep
+    milestone: M4
+    duration: 1 week
+    stories:
+      - E10-S1  # App store assets
+      - E10-S2  # Performance optimization
+      - E10-S3  # Accessibility audit
+      - E10-S4  # Security review
+
+# Tags
+tags:
+  mobile: Mobile app features
+  backend: Worker/container features
+  ui: User interface components
+  gestures: Touch and gesture interactions
+  storage: Data persistence and caching
+  sync: Data synchronization
+  notifications: Push notification features
+  sessions: Interactive session features
+  issues: Issue and PR management
+  dashboard: Dashboard and analytics
+  settings: Settings and preferences
+  design-system: Design tokens and components
+  security: Authentication and security
+  launch: App store and production readiness
+  accessibility: A11y features
+  performance: Performance optimization
+  polish: UX refinements

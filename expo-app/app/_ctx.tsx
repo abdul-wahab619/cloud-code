@@ -10,7 +10,8 @@ export function useExpoContext() {
 export function Provider({ children }: { children: React.ReactNode }) {
   return (
     <Context.Provider value={null}>
-      <Slot>{children}</Slot>
+      <Slot />
+      {children}
     </Context.Provider>
   );
 }
